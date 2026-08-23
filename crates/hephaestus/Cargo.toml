@@ -1,0 +1,11 @@
+[package]
+name = "hephaestus"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hephaestus-core = { path = "../hephaestus-core" }
+anyhow.workspace = true
+envy.workspace = true
+serde.workspace = true
+tracing.workspace = true
