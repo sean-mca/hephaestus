@@ -1,0 +1,31 @@
+//! Error types for the core inference pipeline.
+
+use thiserror::Error;
+
+/// Errors produced by the core inference pipeline.
+#[derive(Error, Debug)]
+pub enum CoreError {
+    /// Failed to tokenize input text.
+    #[error("tokenization failed: {0}")]
+    Tokenization(String),
+
+    /// Failed to run ONNX inference.
+    #[error("inference failed: {0}")]
+    Inference(String),
+
+    /// Failed to load an ONNX model file.
+    #[error("model load failed: {0}")]
+    ModelLoad(String),
+
+    /// Model validation failed (e.g., tokenizer-model input mismatch).
+    #[error("model validation failed: {0}")]
+    ModelValidation(String),
+
+    /// Configuration error.
+    #[error("config error: {0}")]
+    Config(String),
+
+    /// I/O error reading model files.
+    #[error("i/o error")]
+    Io(#[from] std::io::Error),
+}
