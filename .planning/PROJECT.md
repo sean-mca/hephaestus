@@ -12,7 +12,12 @@ A single Rust binary that takes a model name, resolves it to ONNX files (from S3
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] Load ONNX models via `ort` Session on CPU (CORE-01) — Validated in Phase 01: core-inference-engine
+- [x] Configuration from environment variables via `envy` (CORE-02) — Validated in Phase 01
+- [x] Warmup inference pass at startup (CORE-03) — Validated in Phase 01
+- [x] Tokenization via HuggingFace `tokenizers` crate (TOKN-01, TOKN-02, TOKN-03) — Validated in Phase 01
+- [x] Classifier pipeline profile with softmax post-processing (PROF-01) — Validated in Phase 01
+- [x] Pipeline trait with Ousterhout deep-module interface (PROF-05, XCUT-01) — Validated in Phase 01
 
 ### Active
 
