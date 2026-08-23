@@ -6,14 +6,14 @@ current_phase: 01
 current_phase_name: core-inference-engine
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-08-23T17:48:25.892Z"
+last_updated: "2026-08-23T17:56:50.736Z"
 last_activity: 2026-08-23
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-22)
 ## Current Position
 
 Phase: 01 (core-inference-engine) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-23 — Phase 01 execution started
 
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 15 files |
+| Phase 01 P02 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Recent decisions affecting current work:
 - [Phase ?]: PreparedInput made pub (fields pub(crate)) -- Pipeline trait associated type must match trait visibility
 - [Phase ?]: execute() takes &mut self -- ort Session::run() requires mutability, deviating from D-06
 - [Phase ?]: ndarray 0.17 (not 0.16) -- ort 2.0.0-rc.13 depends on ^0.17
+- [Phase ?]: ort v2 API uses methods (inputs(), name()) not fields; inputs! returns Vec not Result; try_extract_tensor returns (Shape, &[T]) tuple
+- [Phase ?]: Tests co-committed with implementation in same source files per Rust cfg(test) convention
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T17:48:25.888Z
+Last session: 2026-08-23T17:56:50.731Z
 Stopped at: Phase 1 context gathered
 Resume file: .planning/phases/01-core-inference-engine/01-CONTEXT.md

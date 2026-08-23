@@ -9,14 +9,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Core Inference
 
-- [ ] **CORE-01**: Runtime loads an ONNX model via `ort` Session and runs inference on CPU execution provider
+- [x] **CORE-01**: Runtime loads an ONNX model via `ort` Session and runs inference on CPU execution provider
 - [ ] **CORE-02**: Runtime reads model configuration from environment variables (MODEL_ID, EXECUTION_PROVIDER, S3_BUCKET, etc.)
 - [ ] **CORE-03**: Runtime runs a warmup inference pass after model load before accepting traffic
 - [ ] **CORE-04**: Runtime enforces request timeouts to prevent runaway inference from blocking the server
 
 ### Model Profiles
 
-- [ ] **PROF-01**: Classifier profile tokenizes input text, runs inference, applies softmax, and returns label + confidence score
+- [x] **PROF-01**: Classifier profile tokenizes input text, runs inference, applies softmax, and returns label + confidence score
 - [ ] **PROF-02**: Embeddings profile tokenizes input text, runs inference, applies L2 normalization, and returns a float vector
 - [ ] **PROF-03**: Seq2seq profile tokenizes input text, runs inference, decodes output tokens, and returns generated text
 - [ ] **PROF-04**: Token classifier profile tokenizes input text, runs inference, and returns per-token labels (NER, POS)
@@ -32,9 +32,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Tokenization
 
-- [ ] **TOKN-01**: Runtime loads tokenizer.json from HuggingFace or S3 cache alongside the ONNX model
-- [ ] **TOKN-02**: Runtime uses the `tokenizers` crate (HuggingFace Rust-native) for all text tokenization
-- [ ] **TOKN-03**: Runtime validates tokenizer output shape against ONNX graph input spec at startup
+- [x] **TOKN-01**: Runtime loads tokenizer.json from HuggingFace or S3 cache alongside the ONNX model
+- [x] **TOKN-02**: Runtime uses the `tokenizers` crate (HuggingFace Rust-native) for all text tokenization
+- [x] **TOKN-03**: Runtime validates tokenizer output shape against ONNX graph input spec at startup
 
 ### API
 
@@ -110,11 +110,11 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | Phase 1 | Pending |
+| CORE-01 | Phase 1 | Complete |
 | CORE-02 | Phase 1 | Pending |
 | CORE-03 | Phase 1 | Pending |
 | CORE-04 | Phase 2 | Pending |
-| PROF-01 | Phase 1 | Pending |
+| PROF-01 | Phase 1 | Complete |
 | PROF-02 | Phase 4 | Pending |
 | PROF-03 | Phase 4 | Pending |
 | PROF-04 | Phase 4 | Pending |
@@ -124,9 +124,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | RSLV-03 | Phase 3 | Pending |
 | RSLV-04 | Phase 3 | Pending |
 | RSLV-05 | Phase 3 | Pending |
-| TOKN-01 | Phase 1 | Pending |
-| TOKN-02 | Phase 1 | Pending |
-| TOKN-03 | Phase 1 | Pending |
+| TOKN-01 | Phase 1 | Complete |
+| TOKN-02 | Phase 1 | Complete |
+| TOKN-03 | Phase 1 | Complete |
 | API-01 | Phase 2 | Pending |
 | API-02 | Phase 2 | Pending |
 | API-03 | Phase 2 | Pending |
