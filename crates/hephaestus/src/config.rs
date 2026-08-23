@@ -99,3 +99,116 @@ impl Config {
         Ok(path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: construct a `Config` with the given model_path and sensible
+    /// defaults for all other fields. Avoids going through envy so tests
+    /// are deterministic and don't mutate process-wide env vars.
+    fn config_with_model_path(model_path: Option<&str>) -> Config {
+        Config {
+            model_id: "test-model".to_string(),
+            model_path: model_path.map(String::from),
+            execution_provider: "cpu".to_string(),
+            log_level: "info".to_string(),
+            warmup_input: None,
+        }
+    }
+
+    #[test]
+    fn from_env_with_defaults_has_correct_defaults() {
+        // Arrange -- set only MODEL_ID; rely on serde defaults for the rest.
+        // Safety: env var mutation is process-global but acceptable in unit
+        // tests that are not run in parallel with other env-dependent tests.
+        unsafe { std::env::set_var("MODEL_ID", "test-model") };
+
+        // Act
+        let config = Config::from_env().expect("should load config with MODEL_ID set");
+
+        // Assert
+        assert_eq!(config.model_id, "test-model");
+        assert_eq!(config.execution_provider, "cpu");
+        assert_eq!(config.log_level, "info");
+        assert!(config.model_path.is_none());
+        assert!(config.warmup_input.is_none());
+
+        // Cleanup
+        unsafe { std::env::remove_var("MODEL_ID") };
+    }
+
+    #[test]
+    fn model_dir_returns_error_when_model_path_is_none() {
+        // Arrange
+        let config = config_with_model_path(None);
+
+        // Act
+        let result = config.model_dir();
+
+        // Assert
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("MODEL_PATH"), "error should mention MODEL_PATH: {msg}");
+    }
+
+    #[test]
+    fn model_dir_rejects_relative_path() {
+        // Arrange
+        let config = config_with_model_path(Some("relative/path"));
+
+        // Act
+        let result = config.model_dir();
+
+        // Assert
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("absolute"), "error should mention 'absolute': {msg}");
+    }
+
+    #[test]
+    fn model_dir_rejects_parent_traversal() {
+        // Arrange
+        let config = config_with_model_path(Some("/tmp/models/../secret"));
+
+        // Act
+        let result = config.model_dir();
+
+        // Assert
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains(".."), "error should mention '..': {msg}");
+    }
+
+    #[test]
+    fn model_dir_accepts_valid_absolute_path() {
+        // Arrange
+        let tmpdir = tempfile::tempdir().expect("should create temp dir");
+        let path_str = tmpdir.path().to_str().expect("path should be valid UTF-8");
+        let config = config_with_model_path(Some(path_str));
+
+        // Act
+        let result = config.model_dir();
+
+        // Assert
+        let dir = result.expect("should accept valid absolute path");
+        assert_eq!(dir, tmpdir.path());
+    }
+
+    #[test]
+    fn model_dir_rejects_nonexistent_path() {
+        // Arrange
+        let config = config_with_model_path(Some("/nonexistent/path/to/model"));
+
+        // Act
+        let result = config.model_dir();
+
+        // Assert
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("does not exist"),
+            "error should mention 'does not exist': {msg}"
+        );
+    }
+}

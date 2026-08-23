@@ -976,6 +976,7 @@ dependencies = [
  "envy",
  "hephaestus-core",
  "serde",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
