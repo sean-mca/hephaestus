@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 01
 current_phase_name: core-inference-engine
-status: executing
+status: verifying
 stopped_at: Phase 1 context gathered
-last_updated: "2026-08-23T17:56:50.736Z"
+last_updated: "2026-08-23T18:04:26.712Z"
 last_activity: 2026-08-23
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-22)
 
 Phase: 01 (core-inference-engine) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-23 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 15 files |
 | Phase 01 P02 | 4min | 2 tasks | 4 files |
+| Phase 01 P03 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,9 @@ Recent decisions affecting current work:
 - [Phase ?]: ndarray 0.17 (not 0.16) -- ort 2.0.0-rc.13 depends on ^0.17
 - [Phase ?]: ort v2 API uses methods (inputs(), name()) not fields; inputs! returns Vec not Result; try_extract_tensor returns (Shape, &[T]) tuple
 - [Phase ?]: Tests co-committed with implementation in same source files per Rust cfg(test) convention
+- [Phase ?]: LOG_LEVEL uses EnvFilter fallback: RUST_LOG takes precedence, LOG_LEVEL used when RUST_LOG unset
+- [Phase ?]: Config loaded before tracing init so log_level is available for env filter
+- [Phase ?]: model_dir() validates path existence in addition to absolute + no-traversal checks (T-01-01)
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T17:56:50.731Z
+Last session: 2026-08-23T18:04:26.708Z
 Stopped at: Phase 1 context gathered
 Resume file: .planning/phases/01-core-inference-engine/01-CONTEXT.md

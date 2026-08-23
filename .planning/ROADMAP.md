@@ -13,7 +13,7 @@ Hephaestus replaces Minerva's scattered Python model-serving runtimes with a sin
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Core Inference Engine** - Rust workspace with ONNX model loading, tokenization, and classifier inference
+- [x] **Phase 1: Core Inference Engine** - Rust workspace with ONNX model loading, tokenization, and classifier inference (completed 2026-08-23)
 - [ ] **Phase 2: HTTP Serving and Observability** - Deployable HTTP service with health probes, metrics, logging, and tracing
 - [ ] **Phase 3: Model Resolution** - Self-building S3 cache with HuggingFace fallback and cache-back
 - [ ] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching
@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Tokenizer is validated against ONNX graph input spec at startup, rejecting mismatched tokenizer/model pairs
   5. All public traits expose Ousterhout-style deep module interfaces (Pipeline trait has 1-3 methods hiding tokenization, inference, and post-processing complexity)
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 **Wave 1**
 
@@ -47,7 +47,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Binary entry point with config and warmup
+- [x] 01-03-PLAN.md — Binary entry point with config and warmup
 
 ### Phase 2: HTTP Serving and Observability
 
@@ -118,7 +118,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Inference Engine | 2/3 | In Progress|  |
+| 1. Core Inference Engine | 3/3 | Complete   | 2026-08-23 |
 | 2. HTTP Serving and Observability | 0/0 | Not started | - |
 | 3. Model Resolution | 0/0 | Not started | - |
 | 4. Additional Profiles and Dynamic Batching | 0/0 | Not started | - |

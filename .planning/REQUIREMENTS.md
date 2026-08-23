@@ -10,8 +10,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Core Inference
 
 - [x] **CORE-01**: Runtime loads an ONNX model via `ort` Session and runs inference on CPU execution provider
-- [ ] **CORE-02**: Runtime reads model configuration from environment variables (MODEL_ID, EXECUTION_PROVIDER, S3_BUCKET, etc.)
-- [ ] **CORE-03**: Runtime runs a warmup inference pass after model load before accepting traffic
+- [x] **CORE-02**: Runtime reads model configuration from environment variables (MODEL_ID, EXECUTION_PROVIDER, S3_BUCKET, etc.)
+- [x] **CORE-03**: Runtime runs a warmup inference pass after model load before accepting traffic
 - [ ] **CORE-04**: Runtime enforces request timeouts to prevent runaway inference from blocking the server
 
 ### Model Profiles
@@ -111,8 +111,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | CORE-01 | Phase 1 | Complete |
-| CORE-02 | Phase 1 | Pending |
-| CORE-03 | Phase 1 | Pending |
+| CORE-02 | Phase 1 | Complete |
+| CORE-03 | Phase 1 | Complete |
 | CORE-04 | Phase 2 | Pending |
 | PROF-01 | Phase 1 | Complete |
 | PROF-02 | Phase 4 | Pending |
