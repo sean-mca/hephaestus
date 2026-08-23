@@ -20,7 +20,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **PROF-02**: Embeddings profile tokenizes input text, runs inference, applies L2 normalization, and returns a float vector
 - [ ] **PROF-03**: Seq2seq profile tokenizes input text, runs inference, decodes output tokens, and returns generated text
 - [ ] **PROF-04**: Token classifier profile tokenizes input text, runs inference, and returns per-token labels (NER, POS)
-- [ ] **PROF-05**: All profiles implement a single `Pipeline` trait with minimal interface (Ousterhout deep module pattern)
+- [x] **PROF-05**: All profiles implement a single `Pipeline` trait with minimal interface (Ousterhout deep module pattern)
 
 ### Model Resolution
 
@@ -64,9 +64,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Cross-Cutting
 
-- [ ] **XCUT-01**: All public traits follow Ousterhout deep module pattern — minimal interface (1-3 methods) hiding significant complexity
-- [ ] **XCUT-02**: Rust workspace with separate crates for proto, core, resolve, and API concerns
-- [ ] **XCUT-03**: All code adheres to rules in `rules/` directory
+- [x] **XCUT-01**: All public traits follow Ousterhout deep module pattern — minimal interface (1-3 methods) hiding significant complexity
+- [x] **XCUT-02**: Rust workspace with separate crates for proto, core, resolve, and API concerns
+- [x] **XCUT-03**: All code adheres to rules in `rules/` directory
 
 ## v2 Requirements
 
@@ -118,7 +118,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | PROF-02 | Phase 4 | Pending |
 | PROF-03 | Phase 4 | Pending |
 | PROF-04 | Phase 4 | Pending |
-| PROF-05 | Phase 1 | Pending |
+| PROF-05 | Phase 1 | Complete |
 | RSLV-01 | Phase 3 | Pending |
 | RSLV-02 | Phase 3 | Pending |
 | RSLV-03 | Phase 3 | Pending |
@@ -141,11 +141,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | FORG-02 | Phase 5 | Pending |
 | FORG-03 | Phase 5 | Pending |
 | FORG-04 | Phase 5 | Pending |
-| XCUT-01 | Phase 1 | Pending |
-| XCUT-02 | Phase 1 | Pending |
-| XCUT-03 | Phase 1 | Pending |
+| XCUT-01 | Phase 1 | Complete |
+| XCUT-02 | Phase 1 | Complete |
+| XCUT-03 | Phase 1 | Complete |
 
 **Coverage:**
+
 - v1 requirements: 34 total
 - Mapped to phases: 34
 - Unmapped: 0

@@ -35,11 +35,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Tokenizer is validated against ONNX graph input spec at startup, rejecting mismatched tokenizer/model pairs
   5. All public traits expose Ousterhout-style deep module interfaces (Pipeline trait has 1-3 methods hiding tokenization, inference, and post-processing complexity)
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Workspace scaffold, Pipeline trait contracts, and failing E2E test (RED)
+- [x] 01-01-PLAN.md — Workspace scaffold, Pipeline trait contracts, and failing E2E test (RED)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -118,7 +118,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Inference Engine | 0/0 | Not started | - |
+| 1. Core Inference Engine | 1/3 | In Progress|  |
 | 2. HTTP Serving and Observability | 0/0 | Not started | - |
 | 3. Model Resolution | 0/0 | Not started | - |
 | 4. Additional Profiles and Dynamic Batching | 0/0 | Not started | - |
