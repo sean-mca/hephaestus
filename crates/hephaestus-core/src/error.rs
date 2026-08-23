@@ -28,4 +28,8 @@ pub enum CoreError {
     /// I/O error reading model files.
     #[error("i/o error")]
     Io(#[from] std::io::Error),
+
+    /// Failed to parse JSON configuration (e.g., config.json).
+    #[error("json parse error")]
+    JsonParse(#[from] serde_json::Error),
 }

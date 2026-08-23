@@ -8,6 +8,7 @@
 
 pub mod error;
 pub mod pipeline;
+pub(crate) mod postprocess;
 
 pub use error::CoreError;
 pub use pipeline::{ClassifierOutput, ClassifierPipeline, Pipeline, PreparedInput};
