@@ -23,6 +23,7 @@ envy = "0.4"
 
 # Instrumentation (prep for Phase 2)
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 # Dev/test dependencies
 hf-hub = "1.0"

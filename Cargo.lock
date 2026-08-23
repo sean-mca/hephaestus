@@ -977,6 +977,7 @@ dependencies = [
  "hephaestus-core",
  "serde",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
