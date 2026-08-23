@@ -31,7 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Developer can pass a text string and receive a classification label with confidence score
   4. Tokenizer is validated against ONNX graph input spec at startup, rejecting mismatched tokenizer/model pairs
   5. All public traits expose Ousterhout-style deep module interfaces (Pipeline trait has 1-3 methods hiding tokenization, inference, and post-processing complexity)
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — Workspace scaffold, Pipeline trait contracts, and failing E2E test (RED)
+- [ ] 01-02-PLAN.md — Core ClassifierPipeline implementation (GREEN)
+- [ ] 01-03-PLAN.md — Binary entry point with config and warmup
 
 ### Phase 2: HTTP Serving and Observability
 **Goal**: Users can deploy Hephaestus as a Kubernetes pod and send HTTP requests for model inference with full production monitoring
