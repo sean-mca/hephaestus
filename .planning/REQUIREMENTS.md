@@ -110,46 +110,46 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | — | Pending |
-| CORE-02 | — | Pending |
-| CORE-03 | — | Pending |
-| CORE-04 | — | Pending |
-| PROF-01 | — | Pending |
-| PROF-02 | — | Pending |
-| PROF-03 | — | Pending |
-| PROF-04 | — | Pending |
-| PROF-05 | — | Pending |
-| RSLV-01 | — | Pending |
-| RSLV-02 | — | Pending |
-| RSLV-03 | — | Pending |
-| RSLV-04 | — | Pending |
-| RSLV-05 | — | Pending |
-| TOKN-01 | — | Pending |
-| TOKN-02 | — | Pending |
-| TOKN-03 | — | Pending |
-| API-01 | — | Pending |
-| API-02 | — | Pending |
-| API-03 | — | Pending |
-| API-04 | — | Pending |
-| OBSV-01 | — | Pending |
-| OBSV-02 | — | Pending |
-| OBSV-03 | — | Pending |
-| BTCH-01 | — | Pending |
-| BTCH-02 | — | Pending |
-| BTCH-03 | — | Pending |
-| FORG-01 | — | Pending |
-| FORG-02 | — | Pending |
-| FORG-03 | — | Pending |
-| FORG-04 | — | Pending |
-| XCUT-01 | — | Pending |
-| XCUT-02 | — | Pending |
-| XCUT-03 | — | Pending |
+| CORE-01 | Phase 1 | Pending |
+| CORE-02 | Phase 1 | Pending |
+| CORE-03 | Phase 1 | Pending |
+| CORE-04 | Phase 2 | Pending |
+| PROF-01 | Phase 1 | Pending |
+| PROF-02 | Phase 4 | Pending |
+| PROF-03 | Phase 4 | Pending |
+| PROF-04 | Phase 4 | Pending |
+| PROF-05 | Phase 1 | Pending |
+| RSLV-01 | Phase 3 | Pending |
+| RSLV-02 | Phase 3 | Pending |
+| RSLV-03 | Phase 3 | Pending |
+| RSLV-04 | Phase 3 | Pending |
+| RSLV-05 | Phase 3 | Pending |
+| TOKN-01 | Phase 1 | Pending |
+| TOKN-02 | Phase 1 | Pending |
+| TOKN-03 | Phase 1 | Pending |
+| API-01 | Phase 2 | Pending |
+| API-02 | Phase 2 | Pending |
+| API-03 | Phase 2 | Pending |
+| API-04 | Phase 2 | Pending |
+| OBSV-01 | Phase 2 | Pending |
+| OBSV-02 | Phase 2 | Pending |
+| OBSV-03 | Phase 2 | Pending |
+| BTCH-01 | Phase 4 | Pending |
+| BTCH-02 | Phase 4 | Pending |
+| BTCH-03 | Phase 4 | Pending |
+| FORG-01 | Phase 5 | Pending |
+| FORG-02 | Phase 5 | Pending |
+| FORG-03 | Phase 5 | Pending |
+| FORG-04 | Phase 5 | Pending |
+| XCUT-01 | Phase 1 | Pending |
+| XCUT-02 | Phase 1 | Pending |
+| XCUT-03 | Phase 1 | Pending |
 
 **Coverage:**
 - v1 requirements: 34 total
-- Mapped to phases: 0
-- Unmapped: 34
+- Mapped to phases: 34
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-22*
-*Last updated: 2026-08-22 after initial definition*
+*Last updated: 2026-08-22 after roadmap creation*
