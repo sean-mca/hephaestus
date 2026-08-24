@@ -12,7 +12,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **CORE-01**: Runtime loads an ONNX model via `ort` Session and runs inference on CPU execution provider
 - [x] **CORE-02**: Runtime reads model configuration from environment variables (MODEL_ID, EXECUTION_PROVIDER, S3_BUCKET, etc.)
 - [x] **CORE-03**: Runtime runs a warmup inference pass after model load before accepting traffic
-- [ ] **CORE-04**: Runtime enforces request timeouts to prevent runaway inference from blocking the server
+- [x] **CORE-04**: Runtime enforces request timeouts to prevent runaway inference from blocking the server
 
 ### Model Profiles
 
@@ -38,16 +38,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### API
 
-- [ ] **API-01**: Runtime serves inference requests over HTTP REST (JSON request/response)
-- [ ] **API-02**: Runtime exposes liveness probe endpoint that responds immediately on startup
-- [ ] **API-03**: Runtime exposes readiness probe endpoint that gates on successful model load
-- [ ] **API-04**: Runtime performs graceful shutdown on SIGTERM — drains in-flight requests before exiting
+- [x] **API-01**: Runtime serves inference requests over HTTP REST (JSON request/response)
+- [x] **API-02**: Runtime exposes liveness probe endpoint that responds immediately on startup
+- [x] **API-03**: Runtime exposes readiness probe endpoint that gates on successful model load
+- [x] **API-04**: Runtime performs graceful shutdown on SIGTERM — drains in-flight requests before exiting
 
 ### Observability
 
-- [ ] **OBSV-01**: Runtime exposes Prometheus metrics endpoint with inference latency histograms, request counts, and error rates
-- [ ] **OBSV-02**: Runtime emits structured JSON logs with request context (model ID, latency, status)
-- [ ] **OBSV-03**: Runtime integrates OpenTelemetry distributed tracing with span propagation across inference pipeline
+- [x] **OBSV-01**: Runtime exposes Prometheus metrics endpoint with inference latency histograms, request counts, and error rates
+- [x] **OBSV-02**: Runtime emits structured JSON logs with request context (model ID, latency, status)
+- [x] **OBSV-03**: Runtime integrates OpenTelemetry distributed tracing with span propagation across inference pipeline
 
 ### Dynamic Batching
 
@@ -113,7 +113,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | CORE-01 | Phase 1 | Complete |
 | CORE-02 | Phase 1 | Complete |
 | CORE-03 | Phase 1 | Complete |
-| CORE-04 | Phase 2 | Pending |
+| CORE-04 | Phase 2 | Complete |
 | PROF-01 | Phase 1 | Complete |
 | PROF-02 | Phase 4 | Pending |
 | PROF-03 | Phase 4 | Pending |
@@ -127,13 +127,13 @@ Deferred to future release. Tracked but not in current roadmap.
 | TOKN-01 | Phase 1 | Complete |
 | TOKN-02 | Phase 1 | Complete |
 | TOKN-03 | Phase 1 | Complete |
-| API-01 | Phase 2 | Pending |
-| API-02 | Phase 2 | Pending |
-| API-03 | Phase 2 | Pending |
-| API-04 | Phase 2 | Pending |
-| OBSV-01 | Phase 2 | Pending |
-| OBSV-02 | Phase 2 | Pending |
-| OBSV-03 | Phase 2 | Pending |
+| API-01 | Phase 2 | Complete |
+| API-02 | Phase 2 | Complete |
+| API-03 | Phase 2 | Complete |
+| API-04 | Phase 2 | Complete |
+| OBSV-01 | Phase 2 | Complete |
+| OBSV-02 | Phase 2 | Complete |
+| OBSV-03 | Phase 2 | Complete |
 | BTCH-01 | Phase 4 | Pending |
 | BTCH-02 | Phase 4 | Pending |
 | BTCH-03 | Phase 4 | Pending |
