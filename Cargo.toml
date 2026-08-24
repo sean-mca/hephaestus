@@ -29,6 +29,12 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.18"
 
+# OpenTelemetry (conditional at runtime, Phase 2)
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.33"
+
 # HTTP serving (Phase 2)
 axum = "0.8"
 tower = { version = "0.5", features = ["timeout"] }

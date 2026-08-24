@@ -57,9 +57,8 @@ pub struct Config {
     /// OpenTelemetry OTLP exporter endpoint (optional, env `OTEL_EXPORTER_OTLP_ENDPOINT`).
     /// When set, OTel tracing is activated. When absent, only structured JSON logs are emitted.
     ///
-    /// Used by `hephaestus_api::telemetry::init` in Plan 02-02.
+    /// Used by `hephaestus_api::telemetry::init` to conditionally activate OTel tracing.
     #[serde(default)]
-    #[expect(dead_code, reason = "consumed by telemetry::init in plan 02-02")]
     pub otel_exporter_otlp_endpoint: Option<String>,
 }
 

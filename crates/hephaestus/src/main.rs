@@ -21,15 +21,13 @@ async fn main() -> Result<(), anyhow::Error> {
     //    Config must be loaded before tracing init so we can use LOG_LEVEL.
     let config = config::Config::from_env()?;
 
-    // 2. Initialize structured JSON logging.
-    //    RUST_LOG takes precedence (from_default_env); if unset, fall back
-    //    to the LOG_LEVEL env var captured in config (D-12).
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&config.log_level));
-    tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .json()
-        .init();
+    // 2. Initialize telemetry: structured JSON logging + conditional OTel export (D-11).
+    //    Must be called inside the tokio runtime (after #[tokio::main]) because the
+    //    OTel batch span processor spawns a background tokio task (Pitfall 1).
+    hephaestus_api::telemetry::init(
+        &config.log_level,
+        config.otel_exporter_otlp_endpoint.as_deref(),
+    )?;
     tracing::info!(
         model_id = %config.model_id,
         execution_provider = %config.execution_provider,
@@ -118,6 +116,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .context("HTTP server error")?;
 
     tracing::info!("server shut down");
+
+    // 8. Flush pending OTel spans before exit.
+    hephaestus_api::telemetry::shutdown();
+
     Ok(())
 }
 

@@ -10,6 +10,7 @@ pub mod handlers;
 pub mod metrics;
 pub mod routes;
 pub mod state;
+pub mod telemetry;
 
 pub use metrics::{StageTimer, install_recorder};
 pub use routes::build_router;
