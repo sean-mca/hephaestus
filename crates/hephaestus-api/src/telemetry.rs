@@ -14,6 +14,7 @@
 use std::sync::OnceLock;
 
 use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -45,9 +46,10 @@ pub fn init(log_level: &str, otel_endpoint: Option<&str>) -> Result<(), anyhow::
 
     // Conditional OTel layer per D-11: Option<Layer> implements Layer,
     // passing through when None -- no feature flags or if/else in hot paths.
-    let otel_layer = if let Some(_endpoint) = otel_endpoint {
+    let otel_layer = if let Some(endpoint) = otel_endpoint {
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
+            .with_endpoint(endpoint)
             .build()
             .map_err(|e| anyhow::anyhow!("failed to build OTLP span exporter: {e}"))?;
 
