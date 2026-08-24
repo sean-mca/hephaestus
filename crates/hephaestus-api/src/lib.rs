@@ -7,8 +7,10 @@
 
 pub mod error;
 pub mod handlers;
+pub mod metrics;
 pub mod routes;
 pub mod state;
 
+pub use metrics::{StageTimer, install_recorder};
 pub use routes::build_router;
 pub use state::AppState;

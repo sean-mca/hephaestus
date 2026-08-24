@@ -8,6 +8,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use hephaestus_core::ClassifierPipeline;
+use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::Mutex;
 
 /// Shared application state for all HTTP handlers.
@@ -32,4 +33,7 @@ pub struct AppState {
 
     /// Per-request inference timeout duration (D-12, CORE-04).
     pub request_timeout: Duration,
+
+    /// Prometheus metrics handle for rendering `/metrics` endpoint (OBSV-01).
+    pub metrics_handle: PrometheusHandle,
 }

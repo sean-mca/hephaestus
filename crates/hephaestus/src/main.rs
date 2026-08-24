@@ -39,6 +39,10 @@ async fn main() -> Result<(), anyhow::Error> {
         "configuration loaded"
     );
 
+    // 2b. Install Prometheus metrics recorder (OBSV-01).
+    let metrics_handle = hephaestus_api::install_recorder()?;
+    tracing::info!("prometheus metrics recorder installed");
+
     // 3. Resolve and validate model directory (T-01-01).
     let model_dir = config.model_dir()?;
 
@@ -54,6 +58,7 @@ async fn main() -> Result<(), anyhow::Error> {
         model_id: config.model_id.clone(),
         start_time: Instant::now(),
         request_timeout: Duration::from_secs(config.request_timeout_secs),
+        metrics_handle,
     });
 
     // 6. Run warmup inference pass (CORE-03), then flip readiness.

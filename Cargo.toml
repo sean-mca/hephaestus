@@ -25,6 +25,10 @@ envy = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
+# Metrics (Phase 2 observability)
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+
 # HTTP serving (Phase 2)
 axum = "0.8"
 tower = { version = "0.5", features = ["timeout"] }

@@ -15,6 +15,7 @@ use hephaestus_core::Pipeline;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
+use crate::metrics::StageTimer;
 use crate::state::AppState;
 
 /// JSON request body for the inference endpoint (D-01).
@@ -65,25 +66,38 @@ pub async fn infer(
         return Err(ApiError::BadRequest("text field must not be empty".to_string()));
     }
 
-    let start = Instant::now();
+    let request_start = Instant::now();
+    let timer = StageTimer::new(state.model_id.clone());
 
     // Wrap inference in a request-level timeout (D-12, D-14, CORE-04).
     // Uses tokio::time::timeout (not tower-http TimeoutLayer) for full
     // control over the 504 response body per Pitfall 4.
     let result = tokio::time::timeout(state.request_timeout, async {
         let mut pipeline = state.pipeline.lock().await;
-        let prepared = pipeline.prepare(req.text)?;
-        let output = pipeline.execute(prepared)?;
+        let prepared = timer.time("tokenization", || pipeline.prepare(req.text))?;
+        let output = timer.time("inference", || pipeline.execute(prepared))?;
         Ok::<_, ApiError>(output)
     })
     .await;
 
     let output = match result {
-        Ok(inner) => inner?,
-        Err(_elapsed) => return Err(ApiError::Timeout),
+        Ok(inner) => match inner {
+            Ok(output) => {
+                timer.finish_request(request_start, true);
+                output
+            }
+            Err(e) => {
+                timer.finish_request(request_start, false);
+                return Err(e);
+            }
+        },
+        Err(_elapsed) => {
+            timer.finish_request(request_start, false);
+            return Err(ApiError::Timeout);
+        }
     };
 
-    let latency_ms = start.elapsed().as_millis() as u64;
+    let latency_ms = request_start.elapsed().as_millis() as u64;
 
     Ok(Json(InferResponse {
         label: output.label,

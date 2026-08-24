@@ -12,6 +12,8 @@ thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

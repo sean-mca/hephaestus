@@ -9,6 +9,7 @@ use axum::routing::{get, post};
 use axum::Router;
 
 use crate::handlers;
+use crate::metrics;
 use crate::state::AppState;
 
 /// Construct the axum router with all HTTP endpoints.
@@ -17,10 +18,12 @@ use crate::state::AppState;
 /// - `POST /infer` -- text classification inference (D-01)
 /// - `GET /healthz/live` -- liveness probe (D-05)
 /// - `GET /healthz/ready` -- readiness probe (D-05)
+/// - `GET /metrics` -- Prometheus scrape endpoint (OBSV-01)
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/infer", post(handlers::infer))
         .route("/healthz/live", get(handlers::liveness))
         .route("/healthz/ready", get(handlers::readiness))
+        .route("/metrics", get(metrics::metrics_handler))
         .with_state(state)
 }
