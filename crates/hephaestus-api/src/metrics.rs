@@ -91,7 +91,7 @@ impl StageTimer {
 /// Reads the [`PrometheusHandle`] from [`AppState`] and returns the
 /// pre-computed metrics text for Prometheus scraping (OBSV-01).
 pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> String {
-    state.metrics_handle.render()
+    state.render_metrics()
 }
 
 #[cfg(test)]

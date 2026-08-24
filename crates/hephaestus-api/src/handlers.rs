@@ -3,7 +3,6 @@
 //! All handlers receive shared [`AppState`] via axum's
 //! [`State`](axum::extract::State) extractor.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -57,7 +56,7 @@ pub async fn infer(
     Json(req): Json<InferRequest>,
 ) -> Result<Json<InferResponse>, ApiError> {
     // Gate on readiness (D-05).
-    if !state.ready.load(Ordering::SeqCst) {
+    if !state.is_ready() {
         return Err(ApiError::NotReady);
     }
 
@@ -67,13 +66,13 @@ pub async fn infer(
     }
 
     let request_start = Instant::now();
-    let timer = StageTimer::new(state.model_id.clone());
+    let timer = StageTimer::new(state.model_id().to_string());
 
     // Wrap inference in a request-level timeout (D-12, D-14, CORE-04).
     // Uses tokio::time::timeout (not tower-http TimeoutLayer) for full
     // control over the 504 response body per Pitfall 4.
-    let result = tokio::time::timeout(state.request_timeout, async {
-        let mut pipeline = state.pipeline.lock().await;
+    let result = tokio::time::timeout(state.request_timeout(), async {
+        let mut pipeline = state.lock_pipeline().await;
         let prepared = timer.time("tokenization", || pipeline.prepare(req.text))?;
         let output = timer.time("inference", || pipeline.execute(prepared))?;
         Ok::<_, ApiError>(output)
@@ -102,7 +101,7 @@ pub async fn infer(
     Ok(Json(InferResponse {
         label: output.label,
         score: output.score,
-        model_id: state.model_id.clone(),
+        model_id: state.model_id().to_string(),
         latency_ms,
     }))
 }
@@ -115,8 +114,8 @@ pub async fn infer(
 pub async fn liveness(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "ok",
-        "model_id": state.model_id,
-        "uptime_s": state.start_time.elapsed().as_secs(),
+        "model_id": state.model_id(),
+        "uptime_s": state.uptime_secs(),
     }))
 }
 
@@ -125,13 +124,13 @@ pub async fn liveness(State(state): State<Arc<AppState>>) -> Json<serde_json::Va
 /// Returns 200 after warmup completes; 503 before warmup or after
 /// SIGTERM flips readiness to false.
 pub async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    if state.ready.load(Ordering::SeqCst) {
+    if state.is_ready() {
         (
             StatusCode::OK,
             Json(serde_json::json!({
                 "status": "ok",
-                "model_id": state.model_id,
-                "uptime_s": state.start_time.elapsed().as_secs(),
+                "model_id": state.model_id(),
+                "uptime_s": state.uptime_secs(),
             })),
         )
     } else {
@@ -139,7 +138,7 @@ pub async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse 
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
                 "status": "not_ready",
-                "model_id": state.model_id,
+                "model_id": state.model_id(),
             })),
         )
     }

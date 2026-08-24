@@ -6,14 +6,12 @@
 
 mod config;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Context;
 use hephaestus_api::{AppState, build_router};
 use hephaestus_core::{ClassifierPipeline, Pipeline};
-use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -50,14 +48,12 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing::info!("classifier pipeline constructed");
 
     // 5. Build shared state (readiness starts false per D-05).
-    let state = Arc::new(AppState {
-        pipeline: Mutex::new(pipeline),
-        ready: AtomicBool::new(false),
-        model_id: config.model_id.clone(),
-        start_time: Instant::now(),
-        request_timeout: Duration::from_secs(config.request_timeout_secs),
+    let state = Arc::new(AppState::new(
+        pipeline,
+        config.model_id.clone(),
+        Duration::from_secs(config.request_timeout_secs),
         metrics_handle,
-    });
+    ));
 
     // 6. Run warmup inference pass (CORE-03), then flip readiness.
     {
@@ -65,7 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .warmup_input
             .as_deref()
             .unwrap_or("This is a warmup inference pass.");
-        let mut pipeline = state.pipeline.lock().await;
+        let mut pipeline = state.lock_pipeline().await;
         let prepared = pipeline
             .prepare(warmup_text.to_string())
             .context("warmup: failed to prepare input")?;
@@ -78,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
             "warmup inference complete"
         );
     }
-    state.ready.store(true, Ordering::SeqCst);
+    state.set_ready(true);
     tracing::info!("warmup complete, readiness enabled");
 
     // 7. Start HTTP server with graceful shutdown.
@@ -96,7 +92,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tokio::spawn(async move {
         // Wait until readiness is flipped to false (shutdown signal received).
         loop {
-            if !watchdog_state.ready.load(Ordering::SeqCst) {
+            if !watchdog_state.is_ready() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
@@ -152,5 +148,5 @@ async fn shutdown_signal(state: Arc<AppState>) {
     }
 
     tracing::info!("shutdown signal received, draining connections");
-    state.ready.store(false, Ordering::SeqCst);
+    state.set_ready(false);
 }
