@@ -14,7 +14,7 @@ Hephaestus replaces Minerva's scattered Python model-serving runtimes with a sin
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Core Inference Engine** - Rust workspace with ONNX model loading, tokenization, and classifier inference (completed 2026-08-23)
-- [ ] **Phase 2: HTTP Serving and Observability** - Deployable HTTP service with health probes, metrics, logging, and tracing
+- [x] **Phase 2: HTTP Serving and Observability** - Deployable HTTP service with health probes, metrics, logging, and tracing (completed 2026-08-24)
 - [ ] **Phase 3: Model Resolution** - Self-building S3 cache with HuggingFace fallback and cache-back
 - [ ] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching
 - [ ] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format
@@ -63,7 +63,7 @@ Plans:
   4. Prometheus scrapes a metrics endpoint showing inference latency histograms, request counts, and error rates; logs are structured JSON with request context (model ID, latency, status)
   5. Distributed traces propagate across the inference pipeline via OpenTelemetry
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 **Wave 1**
 
@@ -75,7 +75,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-02-PLAN.md — Prometheus metrics, deep-module StageTimer, conditional OTel tracing, structured logging
+- [x] 02-02-PLAN.md — Prometheus metrics, deep-module StageTimer, conditional OTel tracing, structured logging
 
 ### Phase 3: Model Resolution
 
@@ -131,7 +131,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Inference Engine | 3/3 | Complete    | 2026-08-23 |
-| 2. HTTP Serving and Observability | 2/3 | In Progress|  |
+| 2. HTTP Serving and Observability | 3/3 | Complete   | 2026-08-24 |
 | 3. Model Resolution | 0/0 | Not started | - |
 | 4. Additional Profiles and Dynamic Batching | 0/0 | Not started | - |
 | 5. Forge Conversion Service | 0/0 | Not started | - |
