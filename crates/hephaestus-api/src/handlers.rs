@@ -51,7 +51,7 @@ pub struct InferResponse {
 /// - 422 if tokenization fails
 /// - 504 if inference times out (D-14)
 /// - 500 if inference fails
-#[tracing::instrument(skip(state))]
+#[tracing::instrument(skip(state, req), fields(text_len = req.text.len()))]
 pub async fn infer(
     State(state): State<Arc<AppState>>,
     Json(req): Json<InferRequest>,
