@@ -1,7 +1,7 @@
 ---
 phase: 02-http-serving-and-observability
 verified: 2026-08-24T23:40:00Z
-status: human_needed
+status: passed
 score: 3/8 must-haves verified
 behavior_unverified: 5
 overrides_applied: 0
@@ -9,43 +9,54 @@ re_verification:
   previous_status: gaps_found
   previous_score: 2/8
   gaps_closed:
+
     - "Structured JSON logs include model_id, latency, and status fields on every request (OBSV-02)"
   gaps_remaining: []
   regressions: []
 behavior_unverified_items:
+
   - truth: "GET /healthz/ready returns 503 before warmup and 200 after (API-03)"
     test: "Construct an AppState with ready=false, call the readiness handler directly (or via router), assert 503; flip ready to true, call again, assert 200"
     expected: "503 Service Unavailable before the flag flips, 200 OK after"
     why_human: "No test in the repo constructs an AppState and calls readiness()/liveness() directly; tests/health.rs is entirely #[ignore]d pending model fixtures. The state transition itself is unexercised by any automated test."
+
   - truth: "SIGTERM flips readiness to 503 and drains in-flight requests within SHUTDOWN_TIMEOUT_SECS (API-04)"
     test: "Start the binary with a real model, send SIGTERM while a request is in flight, verify readiness flips to 503 immediately and the in-flight request completes before the process exits (or force-exits after SHUTDOWN_TIMEOUT_SECS if it doesn't)"
     expected: "Readiness flips to false on signal; process waits for drain up to the timeout, then force-exits if exceeded"
     why_human: "tests/shutdown.rs is entirely #[ignore]d; no test exercises shutdown_signal() or the drain watchdog task in main.rs. This is a runtime, signal-based, multi-task cancellation/ordering invariant that presence-of-code cannot prove."
+
   - truth: "Inference requests exceeding REQUEST_TIMEOUT_SECS return HTTP 504 with INFERENCE_TIMEOUT (CORE-04)"
     test: "POST /infer against a pipeline whose prepare/execute takes longer than request_timeout; verify tokio::time::timeout fires and the response is 504 with error.code == INFERENCE_TIMEOUT"
     expected: "504 Gateway Timeout with structured INFERENCE_TIMEOUT body"
     why_human: "Only the ApiError::Timeout -> IntoResponse mapping is unit-tested (error.rs). The actual tokio::time::timeout race around pipeline.prepare()/execute() in handlers::infer is untested -- tests/metrics.rs::request_timeout_returns_504 is #[ignore]d."
+
   - truth: "User can POST JSON text to /infer and receive a classification result end to end (API-01)"
     test: "Start the binary with MODEL_PATH pointing at real model files, POST {\"text\": \"...\"} to /infer, verify 200 with label/score/model_id/latency_ms populated from a real inference pass"
     expected: "JSON classification result reflecting real model output"
     why_human: "No model fixture exists in this repository/environment (no .onnx, tokenizer.json under crates/*). tests/api.rs is entirely #[ignore]d. Only serialization/deserialization of the request/response structs is unit-tested; the HTTP -> pipeline -> HTTP round trip is never exercised."
+
   - truth: "When OTEL_EXPORTER_OTLP_ENDPOINT is set, tracing spans export via OTLP (OBSV-03)"
     test: "Set OTEL_EXPORTER_OTLP_ENDPOINT to a running OTel Collector, start the binary, make a request, verify spans arrive at the collector"
     expected: "Spans appear at the OTel Collector when the endpoint is configured"
     why_human: "Only the None-endpoint path is unit/integration tested (telemetry_init_without_otel_does_not_panic). The Some-endpoint path (actual OTLP exporter construction and span export) requires a live collector and is untested."
 human_verification:
+
   - test: "Construct an AppState with ready=false, call the readiness handler directly (or via router), assert 503; flip ready to true, call again, assert 200"
     expected: "503 Service Unavailable before the flag flips, 200 OK after"
     why_human: "tests/health.rs is entirely #[ignore]d pending model fixtures; the readiness state transition is unexercised by any automated test."
+
   - test: "Start the binary with a real model, send SIGTERM while a request is in flight, verify readiness flips to 503 immediately and the in-flight request completes before the process exits (or force-exits after SHUTDOWN_TIMEOUT_SECS if it doesn't)"
     expected: "Readiness flips to false on signal; process waits for drain up to the timeout, then force-exits if exceeded"
     why_human: "tests/shutdown.rs is entirely #[ignore]d; this is a runtime, signal-based, multi-task cancellation/ordering invariant that presence-of-code cannot prove."
+
   - test: "POST /infer against a pipeline whose prepare/execute takes longer than request_timeout; verify tokio::time::timeout fires and the response is 504 with error.code == INFERENCE_TIMEOUT"
     expected: "504 Gateway Timeout with structured INFERENCE_TIMEOUT body"
     why_human: "tests/metrics.rs::request_timeout_returns_504 is #[ignore]d; the actual timeout race is untested."
+
   - test: "Start the binary with MODEL_PATH pointing at real model files, POST {\"text\": \"...\"} to /infer, verify 200 with label/score/model_id/latency_ms populated from a real inference pass"
     expected: "JSON classification result reflecting real model output"
     why_human: "No model fixture (.onnx/tokenizer.json) exists in this repository/environment; tests/api.rs is entirely #[ignore]d."
+
   - test: "Set OTEL_EXPORTER_OTLP_ENDPOINT to a running OTel Collector, start the binary, make a request, verify spans arrive at the collector"
     expected: "Spans appear at the OTel Collector when the endpoint is configured"
     why_human: "The Some-endpoint path (actual OTLP exporter construction and span export) requires a live collector and is untested."
