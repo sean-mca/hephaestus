@@ -69,10 +69,24 @@ impl IntoResponse for ApiError {
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         };
 
+        // Log detailed error server-side for debugging; return generic
+        // message to clients for server errors to avoid leaking internal
+        // paths and system details (information disclosure).
+        if status.is_server_error() {
+            tracing::error!(error = %self, "request failed");
+        }
+
+        let client_message = match &self {
+            Self::Internal(_) | Self::Inference(_) | Self::Model(_) => {
+                "internal server error".to_string()
+            }
+            other => other.to_string(),
+        };
+
         let body = serde_json::json!({
             "error": {
                 "code": code,
-                "message": self.to_string(),
+                "message": client_message,
             }
         });
 
