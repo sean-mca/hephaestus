@@ -1,6 +1,6 @@
 ---
 phase: 02-http-serving-and-observability
-reviewed: 2026-08-24T18:42:00Z
+reviewed: 2026-08-24T20:15:00Z
 depth: standard
 files_reviewed: 16
 files_reviewed_list:
@@ -22,175 +22,135 @@ files_reviewed_list:
   - crates/hephaestus/src/main.rs
 findings:
   critical: 1
-  warning: 5
-  info: 2
-  total: 8
+  warning: 3
+  info: 3
+  total: 7
 status: issues_found
 ---
 
 # Phase 02: Code Review Report
 
-**Reviewed:** 2026-08-24T18:42:00Z
+**Reviewed:** 2026-08-24T20:15:00Z
 **Depth:** standard
 **Files Reviewed:** 16
 **Status:** issues_found
 
 ## Summary
 
-Phase 02 adds HTTP serving (axum), health probes, graceful shutdown, Prometheus metrics, OpenTelemetry tracing, and structured JSON logging to the Hephaestus inference runtime. The implementation is generally well-structured with clear module separation, correct error mapping, proper path traversal mitigation, and a clean deep-module abstraction for metrics.
-
-One critical bug was found: the OTLP endpoint parameter is silently discarded, causing the exporter to rely on env-var fallback behavior rather than the passed value. Five warnings cover a dropped log message, blocking CPU work on the async runtime, information disclosure in error responses, potential PII logging of request text, and excessively public struct fields. The integration test suite is mostly stub bodies with `#[ignore]`, providing minimal real coverage.
+The HTTP serving layer (hephaestus-api) and binary entry point (hephaestus) are well-structured with clean separation between error handling, routing, state, metrics, and telemetry. The Ousterhout deep-module principle is applied consistently (StageTimer, AppState accessors). Error responses redact internal details for 5xx errors. Path traversal mitigation is solid. However, a critical architectural flaw exists: CPU-bound ONNX inference runs synchronously on tokio worker threads, which makes the request timeout mechanism (D-14) completely ineffective and can starve the async runtime. Three additional warnings address error propagation and configuration validation gaps.
 
 ## Critical Issues
 
-### CR-01: OTLP endpoint parameter silently discarded -- exporter ignores configured endpoint
+### CR-01: Synchronous CPU-bound inference blocks tokio worker thread, rendering request timeout ineffective
 
-**File:** `crates/hephaestus-api/src/telemetry.rs:48-52`
-**Issue:** The `otel_endpoint` parameter is bound as `_endpoint` (underscore prefix = explicitly unused). The `SpanExporter::builder().with_tonic().build()` call never receives the endpoint value. The function's contract says it accepts an endpoint (`otel_endpoint: Option<&str>`) but silently ignores it. This works in production by accident because the opentelemetry-otlp SDK reads `OTEL_EXPORTER_OTLP_ENDPOINT` directly from the process environment, and `envy` reads the same env var into the config struct. However, any caller passing an endpoint programmatically (tests, alternate config sources) will have their endpoint silently ignored, sending spans to the SDK's default (`http://localhost:4317`) instead.
-**Fix:**
+**File:** `crates/hephaestus-api/src/handlers.rs:74-79`
+**Issue:** `pipeline.prepare()` (tokenization) and `pipeline.execute()` (ONNX inference via ort `Session::run()`) are synchronous, CPU-bound calls executed directly on a tokio worker thread inside `tokio::time::timeout`. The timeout mechanism only triggers at `.await` points. After the single await point (`state.lock_pipeline().await`) on line 75, the remaining computation runs synchronously with no yield points.
+
+This produces two concrete failures:
+
+1. **Timeout never fires for slow inference.** `tokio::time::timeout` internally polls the inner future first; if the inner future returns `Ready` (which it always will, since the sync code eventually completes), the timeout check never triggers `Err(Elapsed)`. A 45-second inference with a 30-second timeout returns `Ok(Ok(output))` -- the timeout is silently bypassed.
+
+2. **Worker thread starvation.** While inference runs, the tokio worker thread is blocked. Health probes (`/healthz/live`, `/healthz/ready`), metrics scraping (`/metrics`), and the graceful shutdown signal handler all compete for the remaining worker threads. Under concurrent inference load, liveness probes can fail, causing Kubernetes to kill a healthy pod.
+
+**Fix:** Move CPU-bound work to tokio's blocking thread pool using `spawn_blocking`. This creates a `.await` point (the JoinHandle) that `tokio::time::timeout` can interrupt. Because `tokio::sync::MutexGuard` borrows the Mutex and cannot satisfy `'static`, use `lock_owned()` to obtain an `OwnedMutexGuard` that can cross the spawn boundary.
+
+Add to `AppState`:
 ```rust
-let otel_layer = if let Some(endpoint) = otel_endpoint {
-    let exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
-        .with_endpoint(endpoint)
-        .build()
-        .map_err(|e| anyhow::anyhow!("failed to build OTLP span exporter: {e}"))?;
+pub async fn lock_pipeline_owned(self: &Arc<Self>) -> tokio::sync::OwnedMutexGuard<ClassifierPipeline> {
+    self.pipeline.clone().lock_owned().await
+}
 ```
+
+Then in the handler:
+```rust
+let result = tokio::time::timeout(state.request_timeout(), async {
+    let pipeline = state.lock_pipeline_owned().await;
+    tokio::task::spawn_blocking(move || {
+        let timer = StageTimer::new(model_id);
+        let prepared = timer.time("tokenization", || pipeline.prepare(text))?;
+        let output = timer.time("inference", || pipeline.execute(prepared))?;
+        Ok::<_, ApiError>(output)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(format!("inference task panicked: {e}")))?
+})
+.await;
+```
+
+This requires exposing the inner `Arc<Mutex<ClassifierPipeline>>` or adding the `lock_pipeline_owned` method. The `pipeline` field in `AppState` must change from `Mutex<ClassifierPipeline>` to `Arc<Mutex<ClassifierPipeline>>` to support `lock_owned()`.
 
 ## Warnings
 
-### WR-01: "OTel export enabled" log emitted before subscriber is installed
+### WR-01: Tokenization error details returned to clients risk information disclosure
 
-**File:** `crates/hephaestus-api/src/telemetry.rs:65`
-**Issue:** `tracing::info!("OpenTelemetry OTLP export enabled")` is called at line 65, before the tracing subscriber is installed at lines 71-75. Since no subscriber is registered at that point, the log message is silently dropped. The code already handles this correctly for the "disabled" case (line 79 logs after subscriber init), but the "enabled" case logs too early.
-**Fix:** Move the log statement after the subscriber is installed, mirroring the pattern already used for the disabled path:
+**File:** `crates/hephaestus-api/src/error.rs:79-84`
+**Issue:** The `IntoResponse` implementation redacts messages for `Internal`, `Inference`, and `Model` errors (returning a generic "internal server error"), but the `Tokenization` variant passes the library error message through to the client via `other.to_string()`. While the HuggingFace tokenizers crate is unlikely to include file paths in `encode()` errors, the defense-in-depth principle requires that no internal error detail reaches clients without explicit sanitization. If the tokenizer error format changes in a future version, this becomes an information disclosure vector.
+
+**Fix:** Either redact tokenization errors the same way as server errors, or explicitly construct a sanitized client message:
 ```rust
-    tracing_subscriber::Registry::default()
-        .with(env_filter)
-        .with(fmt_layer)
-        .with(otel_layer)
-        .init();
-
-    if otel_endpoint.is_some() {
-        tracing::info!("OpenTelemetry OTLP export enabled");
-    } else {
-        tracing::info!("OpenTelemetry export disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set)");
+let client_message = match &self {
+    Self::Internal(_) | Self::Inference(_) | Self::Model(_) => {
+        "internal server error".to_string()
     }
+    Self::Tokenization(_) => "tokenization failed".to_string(),
+    other => other.to_string(),
+};
 ```
 
-### WR-02: Synchronous CPU-bound inference blocks the async runtime
+### WR-02: `telemetry::init` panics on double-init instead of returning Err
 
-**File:** `crates/hephaestus-api/src/handlers.rs:75-81`
-**Issue:** `pipeline.prepare()` (tokenization) and `pipeline.execute()` (ONNX inference) are synchronous CPU-bound operations that run directly on the tokio runtime thread. During inference, the runtime thread is blocked, preventing it from servicing health probes (`/healthz/live`, `/healthz/ready`), processing shutdown signals, or handling the metrics endpoint. If inference is slow (common with larger models), Kubernetes liveness probes may time out and restart the pod. The `Pipeline::execute` trait method takes `&mut self` synchronously, so this is a design-level issue that may require `spawn_blocking` or restructuring.
-**Fix:** Wrap the CPU-bound work in `tokio::task::spawn_blocking` to offload it from the async runtime:
+**File:** `crates/hephaestus-api/src/telemetry.rs:72-76`
+**Issue:** The function signature returns `Result<(), anyhow::Error>`, but line 76 calls `.init()` on the subscriber, which panics if a global subscriber was already installed. This contradicts the function's error contract. In tests or any scenario where `init` is called twice (e.g., test setup that creates multiple integration test harnesses), the process aborts with a panic instead of a recoverable error.
+
+**Fix:** Replace `.init()` with `.try_init()` and propagate the error:
 ```rust
-let result = tokio::time::timeout(state.request_timeout, async {
-    let mut pipeline = state.pipeline.lock().await;
-    let text = req.text;
-    let timer_clone = timer.model_id.clone();
-    // Offload CPU-bound tokenization + inference to blocking thread pool
-    tokio::task::spawn_blocking(move || {
-        let stage_timer = StageTimer::new(timer_clone);
-        let prepared = stage_timer.time("tokenization", || pipeline.prepare(text))?;
-        let output = stage_timer.time("inference", || pipeline.execute(prepared))?;
-        Ok::<_, ApiError>(output)
-    }).await.map_err(|e| ApiError::Internal(e.to_string()))?
-}).await;
+tracing_subscriber::Registry::default()
+    .with(env_filter)
+    .with(fmt_layer)
+    .with(otel_layer)
+    .try_init()
+    .map_err(|e| anyhow::anyhow!("failed to initialize tracing subscriber: {e}"))?;
 ```
-Note: This requires `ClassifierPipeline` to be `Send`, and the `Mutex` guard interaction needs careful restructuring. A simpler interim fix is to ensure the tokio runtime has enough threads (via `worker_threads` config) that at least one thread remains available for health probes.
 
-### WR-03: Internal error messages leak system details to HTTP clients
+### WR-03: No validation that timeout configuration values are positive
 
-**File:** `crates/hephaestus-api/src/error.rs:54,69-76`
-**Issue:** The `From<CoreError>` impl passes raw error messages through to the API response body. For example, `CoreError::Io(e) => Self::Internal(e.to_string())` includes the full IO error which may contain file paths like `/opt/models/tokenizer.json: No such file or directory`. The `IntoResponse` impl at line 72-76 then includes `self.to_string()` in the JSON response, exposing internal system paths and error details to HTTP clients. This is an information disclosure issue.
-**Fix:** Log the detailed error server-side and return a generic message to clients:
+**File:** `crates/hephaestus/src/config.rs:46-55`
+**Issue:** Both `request_timeout_secs` and `shutdown_timeout_secs` accept any `u64` value including 0. A `request_timeout_secs` of 0 creates a `Duration::from_secs(0)` timeout that immediately expires at the first await point, causing every inference request to return 504. A `shutdown_timeout_secs` of 0 causes the watchdog in `main.rs:101` to call `process::exit(1)` immediately after any shutdown signal, defeating graceful drain entirely.
+
+**Fix:** Add validation in `Config::from_env()` or a separate `validate()` method:
 ```rust
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (status, code) = match &self {
-            // ... existing match arms ...
-        };
-
-        // Log the detailed error for debugging; return generic message to client.
-        if status.is_server_error() {
-            tracing::error!(error = %self, "request failed");
-        }
-
-        let client_message = match &self {
-            Self::Internal(_) => "internal server error".to_string(),
-            other => other.to_string(),
-        };
-
-        let body = serde_json::json!({
-            "error": {
-                "code": code,
-                "message": client_message,
-            }
-        });
-
-        (status, axum::Json(body)).into_response()
+pub fn from_env() -> Result<Self, anyhow::Error> {
+    let config = envy::from_env::<Self>()
+        .context("failed to load config from environment (MODEL_ID is required)")?;
+    if config.request_timeout_secs == 0 {
+        bail!("REQUEST_TIMEOUT_SECS must be greater than 0");
     }
-}
-```
-
-### WR-04: Tracing instrument on infer handler records user input text in spans
-
-**File:** `crates/hephaestus-api/src/handlers.rs:54-57`
-**Issue:** The `#[tracing::instrument(skip(state))]` annotation skips `state` but not `req: Json<InferRequest>`. Since `InferRequest` derives `Debug`, the user's input text is recorded in the tracing span and will appear in structured JSON log output and OTel traces. For a classification service processing potentially sensitive text (customer messages, support tickets, medical notes), this creates a PII/data leak through the logging pipeline.
-**Fix:** Add `req` to the skip list, or use `fields` to log only non-sensitive metadata:
-```rust
-#[tracing::instrument(skip(state, req), fields(text_len = req.text.len()))]
-pub async fn infer(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<InferRequest>,
-) -> Result<Json<InferResponse>, ApiError> {
-```
-
-### WR-05: All AppState fields are pub -- no encapsulation of safety-critical state
-
-**File:** `crates/hephaestus-api/src/state.rs:18-38`
-**Issue:** Every field of `AppState` is `pub`, including the `ready` AtomicBool (safety-critical for shutdown correctness) and `request_timeout` Duration. Any downstream code can mutate `ready` directly, bypassing the intended shutdown protocol. This violates the Ousterhout deep-module principle specified in the project's CLAUDE.md constraints. The `pipeline` mutex, `metrics_handle`, and `start_time` are also publicly exposed.
-**Fix:** Make fields private and expose controlled accessors:
-```rust
-pub struct AppState {
-    pipeline: Mutex<ClassifierPipeline>,
-    ready: AtomicBool,
-    model_id: String,
-    start_time: Instant,
-    request_timeout: Duration,
-    metrics_handle: PrometheusHandle,
-}
-
-impl AppState {
-    pub fn new(/* constructor params */) -> Self { /* ... */ }
-    pub fn is_ready(&self) -> bool { self.ready.load(Ordering::SeqCst) }
-    pub fn set_ready(&self, val: bool) { self.ready.store(val, Ordering::SeqCst) }
-    pub fn model_id(&self) -> &str { &self.model_id }
-    pub fn uptime_secs(&self) -> u64 { self.start_time.elapsed().as_secs() }
-    pub fn request_timeout(&self) -> Duration { self.request_timeout }
-    pub fn render_metrics(&self) -> String { self.metrics_handle.render() }
-    pub async fn lock_pipeline(&self) -> tokio::sync::MutexGuard<'_, ClassifierPipeline> {
-        self.pipeline.lock().await
+    if config.shutdown_timeout_secs == 0 {
+        bail!("SHUTDOWN_TIMEOUT_SECS must be greater than 0");
     }
+    Ok(config)
 }
 ```
 
 ## Info
 
-### IN-01: Integration test stubs with empty bodies provide no coverage
+### IN-01: Integration test stubs have empty bodies with no assertions
 
-**File:** `crates/hephaestus-api/tests/api.rs:9-29`, `tests/health.rs:6-24`, `tests/shutdown.rs:7-21`
-**Issue:** 8 of 11 integration tests have completely empty bodies -- no setup, no assertions, no function calls. They are all marked `#[ignore]` so they pass silently. While the comments describe what they would test, they provide zero test coverage and create a false impression of test breadth when listing test files. The test suite has only 3 real tests (1 in metrics.rs, 1 in tracing.rs, plus the unit tests inline in source files).
-**Fix:** Either implement the tests with mock pipelines (since the handlers can be tested via `tower::ServiceExt::oneshot` without real model files), or remove the stubs and track the missing coverage as tech debt items. Mock-based tests are feasible for readiness gating, empty-text validation, and timeout behavior without requiring ONNX model files on disk.
+**File:** `crates/hephaestus-api/tests/api.rs:9-29`, `crates/hephaestus-api/tests/health.rs:6-23`, `crates/hephaestus-api/tests/shutdown.rs:7-22`
+**Issue:** Seven `#[ignore]` integration tests have completely empty bodies. While each test has a comment explaining its intent, the empty bodies could mislead contributors into thinking these are real tests that pass when `--ignored` is not used. Adding `todo!("requires model files")` in each body would make it explicit that these are unimplemented.
 
-### IN-02: `anyhow` used in library crate violates project error handling convention
+### IN-02: `from_env_with_defaults_has_correct_defaults` test is inherently racy
 
-**File:** `crates/hephaestus-api/Cargo.toml:14`, `crates/hephaestus-api/src/metrics.rs:28`, `crates/hephaestus-api/src/telemetry.rs:36`
-**Issue:** The project's CLAUDE.md tech stack guidance specifies "`anyhow` -- Context-rich error propagation at the binary level. Use in `main()` and CLI, not in library traits." The `hephaestus-api` crate is a library crate, but `install_recorder()` and `telemetry::init()` return `Result<_, anyhow::Error>`. Per project convention, these should define typed errors via `thiserror`.
-**Fix:** Define a `TelemetryError` enum in the api crate using `thiserror`, and return that instead of `anyhow::Error` from the library functions. The binary crate can still convert to `anyhow::Error` at the call site with `?` and `.context()`.
+**File:** `crates/hephaestus/src/config.rs:156-174`
+**Issue:** The test uses `unsafe { std::env::set_var("MODEL_ID", "test-model") }` to set a process-global environment variable. While this is the only `from_env` test in the crate (so no parallel conflict currently exists), any future test that reads environment variables in the same crate binary could race. Additionally, the test asserts `config.model_path.is_none()` which would fail if `MODEL_PATH` happened to be set in the ambient environment.
+
+### IN-03: Watchdog `process::exit(1)` bypasses OTel span flush
+
+**File:** `crates/hephaestus/src/main.rs:102-106`
+**Issue:** When the drain timeout watchdog fires, `std::process::exit(1)` terminates the process immediately, skipping `hephaestus_api::telemetry::shutdown()` on line 117. Any buffered OTel spans are lost. This is by design (the watchdog is a last-resort forced exit), but a best-effort `telemetry::shutdown()` call before `process::exit(1)` would recover traces from the final moments of the process's life, which are often the most diagnostically valuable.
 
 ---
 
-_Reviewed: 2026-08-24T18:42:00Z_
+_Reviewed: 2026-08-24T20:15:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
