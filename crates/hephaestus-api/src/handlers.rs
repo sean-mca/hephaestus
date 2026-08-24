@@ -67,10 +67,21 @@ pub async fn infer(
 
     let start = Instant::now();
 
-    // Acquire pipeline lock and run inference.
-    let mut pipeline = state.pipeline.lock().await;
-    let prepared = pipeline.prepare(req.text)?;
-    let output = pipeline.execute(prepared)?;
+    // Wrap inference in a request-level timeout (D-12, D-14, CORE-04).
+    // Uses tokio::time::timeout (not tower-http TimeoutLayer) for full
+    // control over the 504 response body per Pitfall 4.
+    let result = tokio::time::timeout(state.request_timeout, async {
+        let mut pipeline = state.pipeline.lock().await;
+        let prepared = pipeline.prepare(req.text)?;
+        let output = pipeline.execute(prepared)?;
+        Ok::<_, ApiError>(output)
+    })
+    .await;
+
+    let output = match result {
+        Ok(inner) => inner?,
+        Err(_elapsed) => return Err(ApiError::Timeout),
+    };
 
     let latency_ms = start.elapsed().as_millis() as u64;
 

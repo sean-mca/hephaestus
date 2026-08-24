@@ -20,9 +20,10 @@ async fn stage_duration_histograms_recorded_after_inference() {
 }
 
 #[tokio::test]
-#[ignore = "pending 02-01 implementation"]
+#[ignore = "requires model files on disk for ClassifierPipeline"]
 async fn request_timeout_returns_504() {
     // CORE-04: When an inference request exceeds the configured timeout,
-    // the server returns 504 Gateway Timeout. The timeout applies to the
-    // entire request lifecycle (tokenization + inference + post-processing).
+    // the server returns 504 Gateway Timeout with INFERENCE_TIMEOUT error code.
+    // Timeout logic is implemented in handlers::infer via tokio::time::timeout.
+    // Unit test coverage is in error::tests::api_error_timeout_maps_to_504.
 }
