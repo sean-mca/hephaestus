@@ -63,7 +63,7 @@ Plans:
   4. Prometheus scrapes a metrics endpoint showing inference latency histograms, request counts, and error rates; logs are structured JSON with request context (model ID, latency, status)
   5. Distributed traces propagate across the inference pipeline via OpenTelemetry
 
-**Plans:** 3/3 plans complete
+**Plans:** 4 plans (3 complete, 1 gap closure)
 Plans:
 **Wave 1**
 
@@ -76,6 +76,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 02-02-PLAN.md — Prometheus metrics, deep-module StageTimer, conditional OTel tracing, structured logging
+
+**Wave 4** *(gap closure)*
+
+- [ ] 02-03-PLAN.md — Gap closure: per-request structured log events (OBSV-02) and TraceLayer wiring
 
 ### Phase 3: Model Resolution
 
