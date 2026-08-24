@@ -86,17 +86,38 @@ pub async fn infer(
                 output
             }
             Err(e) => {
+                let latency_ms = request_start.elapsed().as_millis() as u64;
                 timer.finish_request(request_start, false);
+                tracing::warn!(
+                    model_id = %state.model_id(),
+                    latency_ms,
+                    status = "error",
+                    "inference request failed"
+                );
                 return Err(e);
             }
         },
         Err(_elapsed) => {
+            let latency_ms = request_start.elapsed().as_millis() as u64;
             timer.finish_request(request_start, false);
+            tracing::warn!(
+                model_id = %state.model_id(),
+                latency_ms,
+                status = "timeout",
+                "inference request timed out"
+            );
             return Err(ApiError::Timeout);
         }
     };
 
     let latency_ms = request_start.elapsed().as_millis() as u64;
+
+    tracing::info!(
+        model_id = %state.model_id(),
+        latency_ms,
+        status = "success",
+        "inference request completed"
+    );
 
     Ok(Json(InferResponse {
         label: output.label,

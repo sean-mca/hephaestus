@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use axum::routing::{get, post};
 use axum::Router;
+use tower_http::trace::TraceLayer;
 
 use crate::handlers;
 use crate::metrics;
@@ -25,5 +26,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/healthz/live", get(handlers::liveness))
         .route("/healthz/ready", get(handlers::readiness))
         .route("/metrics", get(metrics::metrics_handler))
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
