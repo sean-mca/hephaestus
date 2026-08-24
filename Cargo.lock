@@ -982,6 +982,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hephaestus-api"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "hephaestus-core"
 version = "0.1.0"
 dependencies = [
