@@ -1,37 +1,17 @@
 ---
 phase: 02-http-serving-and-observability
-verified: 2026-08-24T22:50:18Z
-status: gaps_found
-score: 2/8 must-haves verified
+verified: 2026-08-24T23:40:00Z
+status: human_needed
+score: 3/8 must-haves verified
 behavior_unverified: 5
 overrides_applied: 0
-gaps:
-  - truth: "Structured JSON logs include model_id, latency, and status fields on every request (OBSV-02)"
-    status: failed
-    reason: >
-      No per-request log event is ever emitted. crates/hephaestus-api/src/handlers.rs infer()
-      carries #[tracing::instrument(skip(state))] but that attribute only creates a tracing
-      span -- it does not by itself produce any log line. crates/hephaestus-api/src/telemetry.rs
-      builds the JSON fmt layer as tracing_subscriber::fmt::layer().json().with_target(true) with
-      no .with_span_events(...) configured, so span enter/exit is never logged either. There is
-      no tracing::info!/warn!/event! call anywhere inside infer() on the success path or any
-      error path. tower-http is declared in the root Cargo.toml workspace deps with
-      features = ["timeout", "trace"] (added in 02-01 specifically to support HTTP tracing), but
-      hephaestus-api/Cargo.toml never depends on tower-http and tower_http::trace::TraceLayer is
-      never applied to the router in routes.rs. The only structured log lines that exist are
-      startup-time events in crates/hephaestus/src/main.rs (config loaded, pipeline constructed,
-      warmup complete, listening, shutdown) -- none of which fire per request or carry latency/status.
-    artifacts:
-      - path: "crates/hephaestus-api/src/handlers.rs"
-        issue: "infer() never emits a tracing event with model_id/latency/status; #[instrument] alone produces no log output"
-      - path: "crates/hephaestus-api/src/telemetry.rs"
-        issue: "fmt layer has no with_span_events(...), so span enter/exit for the instrumented infer() span is never printed"
-      - path: "crates/hephaestus-api/src/routes.rs"
-        issue: "tower_http::trace::TraceLayer (workspace dep declared with the trace feature) is never applied to the router"
-    missing:
-      - "Emit a tracing event at the end of infer() (success and error paths) carrying model_id, latency_ms, and status, e.g. tracing::info!(model_id = %state.model_id, latency_ms, status = \"ok\", \"request completed\")"
-      - "Or wire tower_http::trace::TraceLayer (already a workspace dependency) into build_router() so every request produces a structured log line"
-      - "Add an automated test that asserts the emitted JSON log line contains model_id, latency, and status -- the existing tests/tracing.rs::structured_logs_contain_model_id test is #[ignore]d and does not assert on log content even when manually run"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 2/8
+  gaps_closed:
+    - "Structured JSON logs include model_id, latency, and status fields on every request (OBSV-02)"
+  gaps_remaining: []
+  regressions: []
 behavior_unverified_items:
   - truth: "GET /healthz/ready returns 503 before warmup and 200 after (API-03)"
     test: "Construct an AppState with ready=false, call the readiness handler directly (or via router), assert 503; flip ready to true, call again, assert 200"
@@ -53,28 +33,47 @@ behavior_unverified_items:
     test: "Set OTEL_EXPORTER_OTLP_ENDPOINT to a running OTel Collector, start the binary, make a request, verify spans arrive at the collector"
     expected: "Spans appear at the OTel Collector when the endpoint is configured"
     why_human: "Only the None-endpoint path is unit/integration tested (telemetry_init_without_otel_does_not_panic). The Some-endpoint path (actual OTLP exporter construction and span export) requires a live collector and is untested."
+human_verification:
+  - test: "Construct an AppState with ready=false, call the readiness handler directly (or via router), assert 503; flip ready to true, call again, assert 200"
+    expected: "503 Service Unavailable before the flag flips, 200 OK after"
+    why_human: "tests/health.rs is entirely #[ignore]d pending model fixtures; the readiness state transition is unexercised by any automated test."
+  - test: "Start the binary with a real model, send SIGTERM while a request is in flight, verify readiness flips to 503 immediately and the in-flight request completes before the process exits (or force-exits after SHUTDOWN_TIMEOUT_SECS if it doesn't)"
+    expected: "Readiness flips to false on signal; process waits for drain up to the timeout, then force-exits if exceeded"
+    why_human: "tests/shutdown.rs is entirely #[ignore]d; this is a runtime, signal-based, multi-task cancellation/ordering invariant that presence-of-code cannot prove."
+  - test: "POST /infer against a pipeline whose prepare/execute takes longer than request_timeout; verify tokio::time::timeout fires and the response is 504 with error.code == INFERENCE_TIMEOUT"
+    expected: "504 Gateway Timeout with structured INFERENCE_TIMEOUT body"
+    why_human: "tests/metrics.rs::request_timeout_returns_504 is #[ignore]d; the actual timeout race is untested."
+  - test: "Start the binary with MODEL_PATH pointing at real model files, POST {\"text\": \"...\"} to /infer, verify 200 with label/score/model_id/latency_ms populated from a real inference pass"
+    expected: "JSON classification result reflecting real model output"
+    why_human: "No model fixture (.onnx/tokenizer.json) exists in this repository/environment; tests/api.rs is entirely #[ignore]d."
+  - test: "Set OTEL_EXPORTER_OTLP_ENDPOINT to a running OTel Collector, start the binary, make a request, verify spans arrive at the collector"
+    expected: "Spans appear at the OTel Collector when the endpoint is configured"
+    why_human: "The Some-endpoint path (actual OTLP exporter construction and span export) requires a live collector and is untested."
 ---
 
 # Phase 2: HTTP Serving and Observability — Verification Report
 
 **Phase Goal:** As a platform operator, I want to deploy Hephaestus as a Kubernetes pod and send HTTP inference requests, so that I can serve model inference with health probes, metrics, and tracing in production.
-**Verified:** 2026-08-24T22:50:18Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
-**Mode:** mvp (user-story goal validated via `user-story.validate`)
+**Verified:** 2026-08-24T23:40:00Z
+**Status:** human_needed
+**Re-verification:** Yes — after gap closure (Plan 02-03, OBSV-02 structured logging)
 
-## User Flow Coverage
+## Re-Verification Summary
 
-User story: «As a platform operator, I want to deploy Hephaestus as a Kubernetes pod and send HTTP inference requests, so that I can serve model inference with health probes, metrics, and tracing in production.»
+The prior verification (2026-08-24T22:50:18Z) found status `gaps_found` with one BLOCKER: no per-request structured log event was ever emitted, and `tower_http::trace::TraceLayer` was declared as a workspace dependency but never wired. Gap closure plan 02-03 addressed this directly. This re-verification confirms:
 
-| Step | Expected | Evidence | Status |
-|------|----------|----------|--------|
-| Deploy as a pod | Binary starts via `#[tokio::main]`, loads env config, binds `0.0.0.0:{PORT}` | `crates/hephaestus/src/main.rs:18-89` | ✓ (code present; not run live — no model fixture in repo) |
-| Send HTTP inference request | `POST /infer` accepts `{"text": ...}`, returns `{label, score, model_id, latency_ms}` | `crates/hephaestus-api/src/handlers.rs:55-108`, `routes.rs:24` | ⚠️ present + wired, full round trip unverified (see behavior_unverified_items) |
-| Health probes | `GET /healthz/live` always 200; `GET /healthz/ready` gates on warmup | `handlers.rs:115-146`, `routes.rs:25-26` | ⚠️ liveness verified by inspection; readiness state transition unverified |
-| Metrics | `GET /metrics` returns Prometheus text with per-stage and per-request histograms, `model_id` labels | `metrics.rs`, `routes.rs:27` | ✓ VERIFIED — `tests/metrics.rs::metrics_endpoint_returns_prometheus_text` passes and asserts on content |
-| Tracing | OTel export activates when `OTEL_EXPORTER_OTLP_ENDPOINT` set; JSON logs otherwise | `telemetry.rs` | ⚠️ None-path verified; Some-path (actual export) unverified |
-| Outcome: "serve model inference with health probes, metrics, and tracing in production" | All of the above hold together, including structured per-request logs | See Observable Truths below | ✗ **FAILED** — structured JSON logs with model_id/latency/status per request are not emitted anywhere in the request path |
+1. **`handlers.rs::infer()` now emits tracing events on all three exit paths** — `tracing::info!` on success (line 115-120) with `model_id`, `latency_ms`, `status = "success"`; `tracing::warn!` on the pipeline-error path (line 91-96) with `status = "error"`; `tracing::warn!` on the timeout path (line 103-108) with `status = "timeout"`. All three carry `model_id` (via `%state.model_id()`) and `latency_ms` computed from `request_start.elapsed()`.
+2. **`tower_http::trace::TraceLayer` is wired into the router** — `routes.rs` imports `tower_http::trace::TraceLayer` and applies `.layer(TraceLayer::new_for_http())` in `build_router()` before `.with_state(state)`.
+3. **`tower-http` is now a real dependency of `hephaestus-api`** — added to `crates/hephaestus-api/Cargo.toml` as `tower-http.workspace = true` (previously declared only at the workspace root and never consumed — flagged as an anti-pattern in the prior verification).
+4. **`tests/tracing.rs::structured_logs_contain_model_id` is implemented and no longer `#[ignore]`d** — it scopes a test-local subscriber via `tracing::subscriber::with_default` (avoiding conflict with the other test's global `telemetry::init` subscriber), captures JSON output through a custom `TestWriter`/`MakeWriter`, and asserts `parsed["fields"]["model_id"]`, `parsed["fields"]["latency_ms"]`, and `parsed["fields"]["status"]` all have the expected values.
+
+Live verification: `cargo test -p hephaestus-api --test tracing -- --nocapture` runs 2 tests, both pass, 0 ignored. Full workspace test run (`cargo test --workspace`) confirms no regressions: `hephaestus` bin 6/6, `hephaestus_api` lib 10/10, `tests/tracing.rs` 2/2 (was 1/1 + 1 ignored), all other suites unchanged. `cargo build --workspace` and `cargo clippy --workspace -- -D warnings` both exit 0.
+
+**Gap closed:** OBSV-02 (Structured JSON logs include model_id, latency, and status fields on every request) — now ✓ VERIFIED with a passing automated test asserting on JSON field content, not just code presence.
+
+**No regressions found.** No new `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers introduced in the modified files. The `#[tracing::instrument(skip(state, req), ...)]` attribute on `infer()` (WR-04 fix from an earlier code review) still skips `req` from the span — the new `info!`/`warn!` events only log `model_id`, `latency_ms`, and `status`, no raw request text, so no PII-logging regression was introduced.
+
+**Gaps remaining:** None new. The 5 items that were `PRESENT_BEHAVIOR_UNVERIFIED` in the prior verification (API-01, API-03, API-04, CORE-04, OBSV-03 behavioral proof) are untouched by plan 02-03 — they were out of scope for this gap closure and remain unverified by automated tests (all gated on `#[ignore]`d tests requiring a model fixture, a live signal-handling harness, or a live OTel collector, none of which exist in this repo/environment). These carry forward unchanged and route this phase to `human_needed` rather than `passed`.
 
 ## Goal Achievement
 
@@ -82,51 +81,54 @@ User story: «As a platform operator, I want to deploy Hephaestus as a Kubernete
 
 | # | Truth | Requirement | Status | Evidence |
 |---|-------|-------------|--------|----------|
-| 1 | POST /infer returns JSON classification (label, score, model_id, latency_ms) | API-01 | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `handlers.rs::infer` implemented and wired; only request/response struct (de)serialization is unit-tested (`handlers.rs` tests). Full pipeline round trip requires model files not present in this repo. |
-| 2 | GET /healthz/live returns 200 immediately with model_id, uptime_s | API-02 | ✓ VERIFIED | `handlers.rs::liveness` is a pure, branchless read of `state.model_id`/`state.start_time`; wired at `routes.rs:25`. No state-dependent logic to leave unverified. |
+| 1 | POST /infer returns JSON classification (label, score, model_id, latency_ms) | API-01 | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `handlers.rs::infer` implemented and wired; only request/response struct (de)serialization is unit-tested. Full pipeline round trip requires model files not present in this repo. |
+| 2 | GET /healthz/live returns 200 immediately with model_id, uptime_s | API-02 | ✓ VERIFIED | `handlers.rs::liveness` is a pure, branchless read of `state.model_id`/`state.start_time`; wired at `routes.rs:26`. No state-dependent logic to leave unverified. |
 | 3 | GET /healthz/ready returns 503 before warmup, 200 after (state transition) | API-03 | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `handlers.rs::readiness` reads `state.ready` AtomicBool and branches correctly in code, but no test constructs an `AppState` and calls it in both states — `tests/health.rs` is entirely `#[ignore]`d. |
 | 4 | SIGTERM flips readiness to 503 and drains in-flight requests within SHUTDOWN_TIMEOUT_SECS | API-04 | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `main.rs::shutdown_signal` + drain watchdog task implemented; `tests/shutdown.rs` entirely `#[ignore]`d; no automated evidence the signal → flag flip → drain → force-exit chain actually works. |
-| 5 | Requests exceeding REQUEST_TIMEOUT_SECS return HTTP 504 INFERENCE_TIMEOUT | CORE-04 | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `handlers.rs::infer` wraps the pipeline call in `tokio::time::timeout(state.request_timeout, ...)`; only the `ApiError::Timeout` → 504 response *mapping* is unit-tested, not the actual timeout race. `tests/metrics.rs::request_timeout_returns_504` is `#[ignore]`d. |
+| 5 | Requests exceeding REQUEST_TIMEOUT_SECS return HTTP 504 INFERENCE_TIMEOUT | CORE-04 | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `handlers.rs::infer` wraps the pipeline call in `tokio::time::timeout(state.request_timeout(), ...)` and now emits a `tracing::warn!` with `status="timeout"` on that path; only the `ApiError::Timeout` → 504 response *mapping* is unit-tested, not the actual timeout race. `tests/metrics.rs::request_timeout_returns_504` is `#[ignore]`d. |
 | 6 | GET /metrics returns Prometheus text with hephaestus_stage_duration_seconds / hephaestus_request_duration_seconds histograms carrying model_id labels | OBSV-01 | ✓ VERIFIED | `tests/metrics.rs::metrics_endpoint_returns_prometheus_text` (not ignored, passes) installs the recorder, records via `StageTimer`, renders, and asserts the exposition text contains both histograms, `hephaestus_requests_total`, `model_id="test-model"`, and `stage="tokenization"`. |
-| 7 | Structured JSON logs include model_id, latency, and status fields on every request | OBSV-02 | ✗ **FAILED** | No tracing event is emitted anywhere in `infer()`. `#[tracing::instrument(skip(state))]` alone creates a span but produces no log line (fmt layer has no `with_span_events`). `tower-http`'s `trace` feature is declared as a workspace dependency but never wired into the router. See Gaps below. |
+| 7 | Structured JSON logs include model_id, latency, and status fields on every request | OBSV-02 | ✓ **VERIFIED (gap closed)** | `handlers.rs::infer` emits `tracing::info!`/`tracing::warn!` on success, error, and timeout paths, each carrying `model_id`, `latency_ms`, `status`. `tests/tracing.rs::structured_logs_contain_model_id` captures real JSON output via a scoped subscriber and asserts on `parsed["fields"]["model_id"|"latency_ms"|"status"]`; test passes, not ignored. `tower_http::trace::TraceLayer` additionally wired for HTTP-level access logs on every route. |
 | 8 | When OTEL_EXPORTER_OTLP_ENDPOINT is set, spans export via OTLP; unset → JSON logs only | OBSV-03 | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `telemetry.rs::init` correctly builds `Option<OpenTelemetryLayer>` gated on `otel_endpoint`; the `None` path is tested (`telemetry_init_without_otel_does_not_panic`), the `Some` path (real OTLP export) requires a collector and is untested. |
 
-**Score:** 2/8 truths verified (5 present, behavior-unverified; 1 failed)
+**Score:** 3/8 truths verified (5 present, behavior-unverified; 0 failed)
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `crates/hephaestus-api/src/lib.rs` | Module declarations + re-exports (error, handlers, metrics, routes, state, telemetry) | ✓ VERIFIED | All 6 modules declared; `StageTimer`, `install_recorder`, `build_router`, `AppState` re-exported |
-| `crates/hephaestus-api/src/state.rs` | `AppState` with pipeline Mutex, readiness flag, model metadata, metrics handle | ✓ VERIFIED | Contains `pub struct AppState` with `pipeline: Mutex<ClassifierPipeline>`, `ready: AtomicBool`, `model_id`, `start_time`, `request_timeout`, `metrics_handle` |
-| `crates/hephaestus-api/src/error.rs` | `ApiError` + `CoreError` → HTTP mapping per D-03 | ✓ VERIFIED | `impl IntoResponse for ApiError` maps all 7 variants to correct status codes and error codes; unit-tested |
-| `crates/hephaestus-api/src/handlers.rs` | `infer`, `liveness`, `readiness` handlers | ✓ VERIFIED | All three `pub async fn` present, exported, wired into router |
-| `crates/hephaestus-api/src/routes.rs` | `build_router` mounting all endpoints | ✓ VERIFIED | Mounts `POST /infer`, `GET /healthz/live`, `GET /healthz/ready`, `GET /metrics` |
-| `crates/hephaestus-api/src/metrics.rs` | `StageTimer` deep-module abstraction, `install_recorder`, `metrics_handler` | ✓ VERIFIED | `StageTimer::time`/`finish_request` hide all `metrics` crate calls; behaviorally tested |
-| `crates/hephaestus-api/src/telemetry.rs` | Layered subscriber with conditional OTel export | ✓ VERIFIED | `pub fn init(log_level, otel_endpoint) -> Result<()>` builds Registry + fmt + EnvFilter + optional OTel layer; `pub fn shutdown()` present |
+| `crates/hephaestus-api/src/handlers.rs` | `infer`, `liveness`, `readiness` handlers; per-request structured log events | ✓ VERIFIED | All three `pub async fn` present, exported, wired into router. `tracing::info!`/`warn!` calls added on all 3 exit paths of `infer()` (3 total call sites, confirmed via grep). |
+| `crates/hephaestus-api/src/routes.rs` | `build_router` mounting all endpoints + TraceLayer | ✓ VERIFIED | Mounts `POST /infer`, `GET /healthz/live`, `GET /healthz/ready`, `GET /metrics`; `.layer(TraceLayer::new_for_http())` applied before `.with_state(state)`. |
+| `crates/hephaestus-api/Cargo.toml` | `tower-http` as a real dependency | ✓ VERIFIED | `tower-http.workspace = true` added under `[dependencies]`. |
+| `crates/hephaestus-api/tests/tracing.rs` | Passing test asserting JSON log field presence | ✓ VERIFIED | `structured_logs_contain_model_id` implemented with `TestWriter`/`MakeWriter` + scoped subscriber; asserts on `model_id`, `latency_ms`, `status`; not `#[ignore]`d; passes. |
+| `crates/hephaestus-api/src/state.rs` | `AppState` with pipeline Mutex, readiness flag, model metadata, metrics handle | ✓ VERIFIED | Unchanged from prior verification — confirmed present. |
+| `crates/hephaestus-api/src/error.rs` | `ApiError` + `CoreError` → HTTP mapping per D-03 | ✓ VERIFIED | Unchanged from prior verification — confirmed present. |
+| `crates/hephaestus-api/src/metrics.rs` | `StageTimer` deep-module abstraction, `install_recorder`, `metrics_handler` | ✓ VERIFIED | Unchanged from prior verification — confirmed present. |
+| `crates/hephaestus-api/src/telemetry.rs` | Layered subscriber with conditional OTel export | ✓ VERIFIED | Unchanged from prior verification — confirmed present. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `handlers.rs` | `hephaestus-core/pipeline.rs` | `Pipeline::prepare()` + `execute()` behind `tokio::sync::Mutex` | ✓ WIRED | `state.pipeline.lock().await` then `timer.time("tokenization", \|\| pipeline.prepare(...))` / `timer.time("inference", \|\| pipeline.execute(...))` |
-| `main.rs` | `routes.rs` | `build_router(state)` before `axum::serve()` | ✓ WIRED | `main.rs:91` calls `build_router(state.clone())`, passed into `axum::serve(listener, app)` |
-| `handlers.rs` | `state.rs` | `State<Arc<AppState>>` extractor | ✓ WIRED | All three handlers take `State(state): State<Arc<AppState>>` |
-| `handlers.rs` | `metrics.rs` | `StageTimer::time()` wraps prepare/execute | ✓ WIRED | Confirmed above |
-| `main.rs` | `telemetry.rs` | `telemetry::init()` replaces inline tracing setup | ✓ WIRED | `main.rs:27-30` calls `hephaestus_api::telemetry::init(...)`; no inline `tracing_subscriber::fmt().json().init()` remains |
-| `metrics.rs` | `routes.rs` | `metrics_handler` reads `PrometheusHandle` from `AppState`, rendered at `/metrics` | ✓ WIRED | `routes.rs:27` mounts `get(metrics::metrics_handler)`; handler calls `state.metrics_handle.render()` |
-| `handlers.rs` | `telemetry`/tracing output | Per-request structured log with model_id/latency/status | ✗ **NOT WIRED** | No event emitted in `infer()`; no `TraceLayer` applied to router; see Gaps |
+| `handlers.rs` | `hephaestus-core/pipeline.rs` | `Pipeline::prepare()` + `execute()` behind `tokio::sync::Mutex` | ✓ WIRED | Unchanged — `state.lock_pipeline().await` then `timer.time(...)`. |
+| `main.rs` | `routes.rs` | `build_router(state)` before `axum::serve()` | ✓ WIRED | Unchanged. |
+| `handlers.rs` | `state.rs` | `State<Arc<AppState>>` extractor | ✓ WIRED | Unchanged. |
+| `handlers.rs` | `metrics.rs` | `StageTimer::time()` wraps prepare/execute | ✓ WIRED | Unchanged. |
+| `main.rs` | `telemetry.rs` | `telemetry::init()` replaces inline tracing setup | ✓ WIRED | Unchanged. |
+| `metrics.rs` | `routes.rs` | `metrics_handler` reads `PrometheusHandle` from `AppState`, rendered at `/metrics` | ✓ WIRED | Unchanged. |
+| `handlers.rs` | `telemetry`/tracing output | Per-request structured log with model_id/latency/status | ✓ **WIRED (was NOT WIRED)** | `tracing::info!`/`warn!` events in `infer()` flow through the `telemetry.rs` JSON fmt layer; confirmed by a passing test that captures and parses the actual JSON output. |
+| `routes.rs` | `tower_http::trace` | `TraceLayer::new_for_http()` applied in `build_router` | ✓ **WIRED (new)** | HTTP-level access logging (method, URI, status, latency) now active for all routes. |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
 | Workspace builds | `cargo build --workspace` | Exit 0, no errors | ✓ PASS |
-| Workspace tests | `cargo test --workspace` | All suites green: `hephaestus` bin 6/6, `hephaestus_api` lib 10/10, `tests/api.rs` 0/2 (ignored), `tests/health.rs` 0/2 (ignored), `tests/metrics.rs` 1/1 + 2 ignored, `tests/shutdown.rs` 0/2 (ignored), `tests/tracing.rs` 1/1 + 1 ignored, `hephaestus_core` 10/10 | ✓ PASS (no failures; several requirement-critical tests are `#[ignore]`d rather than run) |
 | Lint | `cargo clippy --workspace -- -D warnings` | Exit 0, no warnings | ✓ PASS |
-| `/metrics` renders real Prometheus text with required series | `cargo test -p hephaestus-api --test metrics metrics_endpoint_returns_prometheus_text` | Passes; asserts `hephaestus_stage_duration_seconds`, `hephaestus_request_duration_seconds`, `hephaestus_requests_total`, `model_id="test-model"`, `stage="tokenization"` all present in rendered text | ✓ PASS |
-| Live end-to-end HTTP server against a real model | Would require `MODEL_PATH` pointing at real `.onnx` + `tokenizer.json` + `config.json` | No fixture found anywhere in repo (`find ... -iname "*.onnx"` empty) | ? SKIP — no runnable model fixture in this environment |
-| Structured per-request log content | `grep -rn "tracing::\(info\|warn\|error\)!" crates/hephaestus-api/src/handlers.rs` | No matches | ✗ FAIL — confirms Gap #1 (OBSV-02) |
+| Workspace tests (single full run) | `cargo test --workspace` | All suites green: `hephaestus` bin 6/6, `hephaestus_api` lib 10/10, `tests/api.rs` 0/2 (ignored), `tests/health.rs` 0/2 (ignored), `tests/metrics.rs` 1/1 + 2 ignored, `tests/shutdown.rs` 0/2 (ignored), `tests/tracing.rs` **2/2, 0 ignored** (was 1/1 + 1 ignored), `hephaestus_core` 10/10 | ✓ PASS — no regressions, OBSV-02 test now runs |
+| Structured per-request log content | `cargo test -p hephaestus-api --test tracing -- --nocapture` | Both tests pass; captured JSON line shows `{"level":"INFO",...,"model_id":"test-model"}` style output and the field-presence assertions succeed | ✓ PASS — confirms Gap #1 (OBSV-02) is closed |
+| `tracing::info!`/`warn!` call sites in handlers.rs | `grep -c 'tracing::info!\|tracing::warn!' crates/hephaestus-api/src/handlers.rs` | 3 | ✓ PASS (1 info for success, 2 warn for error+timeout, matches plan acceptance criteria) |
+| `TraceLayer` referenced in routes.rs | `grep -c 'TraceLayer' crates/hephaestus-api/src/routes.rs` | 2 (import + usage) | ✓ PASS |
+| Live end-to-end HTTP server against a real model | Would require `MODEL_PATH` pointing at real `.onnx` + `tokenizer.json` + `config.json` | No fixture found anywhere in repo | ? SKIP — no runnable model fixture in this environment (unchanged from prior verification) |
 
 ### Requirements Coverage
 
@@ -138,26 +140,24 @@ User story: «As a platform operator, I want to deploy Hephaestus as a Kubernete
 | API-04 | 02-01 | Graceful shutdown drains in-flight requests | ✓ SATISFIED (code) / needs human E2E | `main.rs::shutdown_signal`, drain watchdog |
 | CORE-04 | 02-01 | Request timeout enforcement | ✓ SATISFIED (code) / needs human E2E | `handlers.rs::infer` `tokio::time::timeout` |
 | OBSV-01 | 02-02 | Prometheus metrics endpoint | ✓ SATISFIED — behaviorally tested | `metrics.rs`, `tests/metrics.rs` |
-| OBSV-02 | 02-02 | Structured JSON logs with request context (model ID, latency, status) | ✗ **BLOCKED** | No per-request log event exists anywhere in the request path |
+| OBSV-02 | 02-02, 02-03 (gap closure) | Structured JSON logs with request context (model ID, latency, status) | ✓ **SATISFIED — behaviorally tested** | `handlers.rs::infer` tracing events, `tests/tracing.rs::structured_logs_contain_model_id` (passes, asserts on JSON field content) |
 | OBSV-03 | 02-02 | OpenTelemetry distributed tracing with span propagation | ✓ SATISFIED (code, None-path tested) / needs human E2E for Some-path | `telemetry.rs::init` |
 
-No orphaned requirements: the 8 IDs in the phase's plans (`API-01..04, CORE-04, OBSV-01..03`) exactly match the IDs listed for Phase 2 in `ROADMAP.md` and `REQUIREMENTS.md`. Note that `REQUIREMENTS.md` currently marks OBSV-02 as `[x]` Complete — this verification contradicts that marking; OBSV-02 should be reopened until the logging gap is closed.
+REQUIREMENTS.md marks OBSV-02 as `[x]` Complete — this re-verification now confirms that marking is accurate. No orphaned requirements: the 8 IDs in the phase's plans (`API-01..04, CORE-04, OBSV-01..03`) exactly match the IDs listed for Phase 2 in `ROADMAP.md` and `REQUIREMENTS.md`.
 
 ### Anti-Patterns Found
 
-| File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| `Cargo.toml` (root) | 41 | `tower-http = { version = "0.7", features = ["timeout", "trace"] }` declared but never consumed by any crate (`hephaestus-api/Cargo.toml` does not depend on it; no `tower_http::` import anywhere in `src/`) | ℹ️ Info | Corroborates Gap #1 — the dependency added specifically to support HTTP-level tracing (`trace` feature) was never wired in |
+None. The previously flagged info-level anti-pattern (`tower-http` declared at workspace root but never consumed by `hephaestus-api`) is resolved — `tower-http.workspace = true` is now a real dependency and `tower_http::trace::TraceLayer` is imported and used in `routes.rs`.
 
-No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in any Phase 2 source file.
+No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in any file modified by plan 02-03.
 
 ### Gaps Summary
 
-One BLOCKER: **OBSV-02 (structured JSON logs with request context) is not implemented.** The infrastructure for structured logging exists (JSON fmt layer, conditional OTel layer, `#[tracing::instrument]` on the handler), but nothing in the request path ever emits a log event carrying `model_id`, `latency`, or `status`. `#[instrument]` alone only creates a span; without `with_span_events(...)` on the fmt layer or an explicit `tracing::info!`/`event!` call inside `infer()`, no JSON log line is produced per request. The `tower-http` `trace` feature was added to the workspace Cargo.toml in Plan 02-01 specifically to cover this, but was never applied to the router. This must be fixed before Phase 2's roadmap success criterion 4 ("logs are structured JSON with request context — model ID, latency, status") can be considered true.
+**No gaps remain that block Phase 2 completion.** The OBSV-02 BLOCKER identified in the prior verification is closed: `infer()` now emits `tracing::info!`/`tracing::warn!` events with `model_id`, `latency_ms`, and `status` on every exit path (success, pipeline error, timeout), `tower_http::trace::TraceLayer` provides HTTP-level access logging for all routes, and an automated test (`structured_logs_contain_model_id`) proves the JSON output actually contains these fields — not just that the code compiles.
 
-Five items are present-and-wired but behaviorally unverified because their correctness depends on runtime state transitions (readiness flip, SIGTERM drain, request timeout race) or require a real model fixture / live OTel collector that does not exist in this repository/environment. These are not blockers in themselves — the code paths are implemented and match the plan's design — but they have zero automated proof of correct runtime behavior (all corresponding integration tests are `#[ignore]`d) and should be exercised manually (or with a model fixture added) before treating Phase 2 as production-ready.
+Five items remain `PRESENT_BEHAVIOR_UNVERIFIED` (API-01, API-03, API-04, CORE-04, OBSV-03's OTLP-export path). These were out of scope for the OBSV-02 gap closure and are unchanged from the prior verification: the corresponding integration tests (`tests/api.rs`, `tests/health.rs`, `tests/shutdown.rs`, `tests/metrics.rs::request_timeout_returns_504`) are all `#[ignore]`d pending a real model fixture (no `.onnx`/`tokenizer.json` in this repo/environment), a live signal-handling test harness, or a live OTel Collector. The code paths are implemented and match the plan's design, but have zero automated proof of correct runtime behavior. These route the phase to `human_needed` rather than `passed` — a human (or a future phase that adds model fixtures / a test harness) should exercise them before treating Phase 2 as fully production-verified.
 
 ---
 
-*Verified: 2026-08-24T22:50:18Z*
+*Verified: 2026-08-24T23:40:00Z*
 *Verifier: Claude (gsd-verifier)*
