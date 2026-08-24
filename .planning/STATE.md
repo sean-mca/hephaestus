@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: http-serving-and-observability
-status: verifying
+status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-08-24T22:38:58.317Z"
+last_updated: "2026-08-24T23:25:21.673Z"
 last_activity: 2026-08-24
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 7
+  completed_plans: 7
   percent: 40
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-08-22)
 ## Current Position
 
 Phase: 02 (http-serving-and-observability) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-08-24 — Phase 02 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02 P00 | 2min | 2 tasks | 7 files |
 | Phase 02 P01 | 7min | 2 tasks | 15 files |
 | Phase 02 P02 | 8min | 2 tasks | 12 files |
+| Phase 02 P03 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,7 @@ Recent decisions affecting current work:
 - [Phase ?]: OTel v0.32 removed global shutdown_tracer_provider; store SdkTracerProvider in OnceLock for clean shutdown
 - [Phase ?]: Deep-module StageTimer hides all metrics crate interaction; handlers never touch metrics macros
 - [Phase ?]: Conditional OTel layer via Option in subscriber registry; None passes through with zero overhead
+- [Phase ?]: Per-request tracing events with model_id/latency_ms/status on all handler exit paths (OBSV-02)
 
 ### Pending Todos
 
@@ -107,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-24T22:38:42.823Z
+Last session: 2026-08-24T23:25:05.526Z
 Stopped at: Phase 2 context gathered
 Resume file: .planning/phases/02-http-serving-and-observability/02-CONTEXT.md
