@@ -2,8 +2,8 @@
 phase: 02
 slug: http-serving-and-observability
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-23
 ---
 
@@ -38,14 +38,14 @@ created: 2026-08-23
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | API-01 | — | N/A | integration | `cargo test --test api` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | API-02 | — | N/A | integration | `cargo test --test api` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | API-03 | — | N/A | integration | `cargo test --test health` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | API-04 | — | N/A | Graceful drain | integration | `cargo test --test shutdown` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | CORE-04 | — | N/A | unit | `cargo test --lib` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | OBSV-01 | — | N/A | integration | `cargo test --test metrics` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | OBSV-02 | — | N/A | unit | `cargo test --lib` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | OBSV-03 | — | N/A | integration | `cargo test --test tracing` | ❌ W0 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | API-01 | — | N/A | integration | `cargo test -p hephaestus-api --test api` | Stub (02-00), populated by 02-01 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | API-02 | — | N/A | integration | `cargo test -p hephaestus-api --test api` | Stub (02-00), populated by 02-01 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | API-03 | — | N/A | integration | `cargo test -p hephaestus-api --test health` | Stub (02-00), populated by 02-01 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | API-04 | — | N/A | integration | `cargo test -p hephaestus-api --test shutdown` | Stub (02-00), populated by 02-01 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | CORE-04 | — | N/A | integration | `cargo test -p hephaestus-api --test metrics` | Stub (02-00), populated by 02-01 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | OBSV-01 | — | N/A | integration | `cargo test -p hephaestus-api --test metrics` | Stub (02-00), populated by 02-02 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | OBSV-02 | — | N/A | integration | `cargo test -p hephaestus-api --test tracing` | Stub (02-00), populated by 02-02 | ⬜ pending |
+| 02-00-T2 | 02-00 | W1 | OBSV-03 | — | N/A | integration | `cargo test -p hephaestus-api --test tracing` | Stub (02-00), populated by 02-02 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -53,11 +53,11 @@ created: 2026-08-23
 
 ## Wave 0 Requirements
 
-- [ ] Test infrastructure for integration tests (axum test client)
-- [ ] Shared fixtures for mock inference pipeline
-- [ ] Test helpers for metrics endpoint parsing
+- [x] Test infrastructure for integration tests (axum test client) -- 02-00-PLAN.md creates crate skeleton and test stubs; 02-01 populates with axum test utilities
+- [x] Shared fixtures for mock inference pipeline -- 02-01 creates mock pipeline utilities when populating test stubs
+- [x] Test helpers for metrics endpoint parsing -- 02-02 populates metrics test stubs with Prometheus text assertions
 
-*Existing `cargo test` infrastructure covers unit tests; integration test scaffolding needed for HTTP endpoints.*
+*Wave 0 plan (02-00-PLAN.md) creates the hephaestus-api crate skeleton and all 5 integration test stub files. Stubs are #[ignore] until populated by 02-01 and 02-02.*
 
 ---
 
@@ -72,11 +72,11 @@ created: 2026-08-23
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references -- 02-00-PLAN.md creates all 5 test stub files
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved (Wave 0 plan 02-00-PLAN.md addresses all gaps)

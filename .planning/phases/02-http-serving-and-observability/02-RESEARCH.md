@@ -624,17 +624,19 @@ async fn main() -> Result<(), anyhow::Error> {
 | A3 | OTel batch exporter requires tokio runtime context at init time | Pitfalls | If this is wrong, tracing init could stay before tokio::main; low risk since docs confirm it |
 | A4 | axum-prometheus is not used because it locks label schema | Alternatives Considered | If the built-in labels suffice, it would save implementation time; but D-08 requires custom per-stage histograms |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Timeout implementation: TimeoutLayer (408) vs custom handler-level timeout (504)**
    - What we know: tower-http TimeoutLayer returns 408 by default. D-14 specifies 504 with structured JSON body.
    - What's unclear: Whether TimeoutLayer can be configured with a custom response body and status code (docs mention `with_status_code` method).
    - Recommendation: Use `tokio::time::timeout` around the inference call in the handler body. This gives full control over the 504 response structure matching D-14. Apply TimeoutLayer as a safety net at a higher timeout (e.g., 60s) to catch edge cases.
+   - RESOLVED: Use `tokio::time::timeout` at the handler level for D-14 structured 504 responses. Implemented in 02-01-PLAN.md Task 2.
 
 2. **Pipeline mutability and Send bounds**
    - What we know: `ClassifierPipeline::execute()` takes `&mut self`. ort Session is not Sync.
    - What's unclear: Whether tokio::sync::Mutex is sufficient or if spawn_blocking is needed for the synchronous ort::Session::run() call.
    - Recommendation: Start with `tokio::sync::Mutex<ClassifierPipeline>` in shared state. Document spawn_blocking as a Phase 4 optimization. The one-model-per-pod design means low request concurrency per pod.
+   - RESOLVED: Use `tokio::sync::Mutex<ClassifierPipeline>` in AppState. spawn_blocking deferred to Phase 4 per one-model-per-pod low-concurrency design. Implemented in 02-01-PLAN.md Task 1.
 
 ## Environment Availability
 

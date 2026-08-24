@@ -63,13 +63,17 @@ Plans:
   4. Prometheus scrapes a metrics endpoint showing inference latency histograms, request counts, and error rates; logs are structured JSON with request context (model ID, latency, status)
   5. Distributed traces propagate across the inference pipeline via OpenTelemetry
 
-**Plans:** 2 plans
+**Plans:** 3 plans
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — HTTP inference endpoint with health probes, graceful shutdown, and request timeout
+- [ ] 02-00-PLAN.md — Test scaffolding: crate skeleton and integration test stubs
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-01-PLAN.md — HTTP inference endpoint with health probes, graceful shutdown, and request timeout
+
+**Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 02-02-PLAN.md — Prometheus metrics, deep-module StageTimer, conditional OTel tracing, structured logging
 
@@ -127,7 +131,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Inference Engine | 3/3 | Complete    | 2026-08-23 |
-| 2. HTTP Serving and Observability | 0/2 | Not started | - |
+| 2. HTTP Serving and Observability | 0/3 | Not started | - |
 | 3. Model Resolution | 0/0 | Not started | - |
 | 4. Additional Profiles and Dynamic Batching | 0/0 | Not started | - |
 | 5. Forge Conversion Service | 0/0 | Not started | - |
