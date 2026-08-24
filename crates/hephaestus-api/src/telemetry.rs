@@ -64,7 +64,6 @@ pub fn init(log_level: &str, otel_endpoint: Option<&str>) -> Result<(), anyhow::
 
         let layer = tracing_opentelemetry::OpenTelemetryLayer::new(tracer);
 
-        tracing::info!("OpenTelemetry OTLP export enabled");
         Some(layer)
     } else {
         None
@@ -76,8 +75,10 @@ pub fn init(log_level: &str, otel_endpoint: Option<&str>) -> Result<(), anyhow::
         .with(otel_layer)
         .init();
 
-    if otel_endpoint.is_none() {
-        // Log after subscriber is installed so it actually appears.
+    // Log after subscriber is installed so messages actually appear.
+    if otel_endpoint.is_some() {
+        tracing::info!("OpenTelemetry OTLP export enabled");
+    } else {
         tracing::info!("OpenTelemetry export disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set)");
     }
 
