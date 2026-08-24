@@ -1,0 +1,26 @@
+//! axum router construction for the Hephaestus HTTP API.
+//!
+//! The [`build_router`] function mounts all HTTP endpoints and
+//! attaches shared [`AppState`] as axum state.
+
+use std::sync::Arc;
+
+use axum::routing::{get, post};
+use axum::Router;
+
+use crate::handlers;
+use crate::state::AppState;
+
+/// Construct the axum router with all HTTP endpoints.
+///
+/// Mounts:
+/// - `POST /infer` -- text classification inference (D-01)
+/// - `GET /healthz/live` -- liveness probe (D-05)
+/// - `GET /healthz/ready` -- readiness probe (D-05)
+pub fn build_router(state: Arc<AppState>) -> Router {
+    Router::new()
+        .route("/infer", post(handlers::infer))
+        .route("/healthz/live", get(handlers::liveness))
+        .route("/healthz/ready", get(handlers::readiness))
+        .with_state(state)
+}

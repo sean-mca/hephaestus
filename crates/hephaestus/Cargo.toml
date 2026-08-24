@@ -5,9 +5,12 @@ edition = "2024"
 
 [dependencies]
 hephaestus-core = { path = "../hephaestus-core" }
+hephaestus-api = { path = "../hephaestus-api" }
 anyhow.workspace = true
+axum.workspace = true
 envy.workspace = true
 serde.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

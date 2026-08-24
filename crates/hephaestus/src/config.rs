@@ -41,6 +41,26 @@ pub struct Config {
     /// Custom warmup inference text (optional).
     #[serde(default)]
     pub warmup_input: Option<String>,
+
+    /// HTTP server listen port (default: 8080, env `PORT`).
+    #[serde(default = "default_port")]
+    pub port: u16,
+
+    /// Per-request inference timeout in seconds (default: 30, env `REQUEST_TIMEOUT_SECS`).
+    #[serde(default = "default_request_timeout_secs")]
+    pub request_timeout_secs: u64,
+
+    /// Graceful shutdown drain timeout in seconds (default: 30, env `SHUTDOWN_TIMEOUT_SECS`).
+    #[serde(default = "default_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
+
+    /// OpenTelemetry OTLP exporter endpoint (optional, env `OTEL_EXPORTER_OTLP_ENDPOINT`).
+    /// When set, OTel tracing is activated. When absent, only structured JSON logs are emitted.
+    ///
+    /// Used by `hephaestus_api::telemetry::init` in Plan 02-02.
+    #[serde(default)]
+    #[expect(dead_code, reason = "consumed by telemetry::init in plan 02-02")]
+    pub otel_exporter_otlp_endpoint: Option<String>,
 }
 
 fn default_ep() -> String {
@@ -49,6 +69,18 @@ fn default_ep() -> String {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_port() -> u16 {
+    8080
+}
+
+fn default_request_timeout_secs() -> u64 {
+    30
+}
+
+fn default_shutdown_timeout_secs() -> u64 {
+    30
 }
 
 impl Config {
@@ -114,6 +146,10 @@ mod tests {
             execution_provider: "cpu".to_string(),
             log_level: "info".to_string(),
             warmup_input: None,
+            port: 8080,
+            request_timeout_secs: 30,
+            shutdown_timeout_secs: 30,
+            otel_exporter_otlp_endpoint: None,
         }
     }
 

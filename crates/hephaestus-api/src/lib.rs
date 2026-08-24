@@ -1,5 +1,14 @@
 //! HTTP serving layer for the Hephaestus unified ONNX inference runtime.
 //!
-//! This crate provides the REST and gRPC API surface, health probes,
-//! graceful shutdown, Prometheus metrics, and OpenTelemetry tracing
-//! integration for Hephaestus.
+//! This crate provides the REST API surface, health probes,
+//! graceful shutdown, and error mapping for Hephaestus.
+//! Handlers access the inference pipeline through shared [`AppState`]
+//! and the router is constructed via [`build_router`].
+
+pub mod error;
+pub mod handlers;
+pub mod routes;
+pub mod state;
+
+pub use routes::build_router;
+pub use state::AppState;
