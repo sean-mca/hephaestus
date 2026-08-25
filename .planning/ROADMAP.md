@@ -94,7 +94,15 @@ Plans:
   3. On both S3 and HuggingFace miss, runtime calls the Forge API for conversion (returns a clear error if Forge is unavailable)
   4. Developer configures only MODEL_ID; the 3-tier resolution chain is abstracted behind a single resolve() call
 
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — HuggingFace resolution vertical slice: resolve crate + HF download + binary wiring
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — S3 cache tier, background cache-back upload, and Forge client stub
 
 ### Phase 4: Additional Profiles and Dynamic Batching
 
