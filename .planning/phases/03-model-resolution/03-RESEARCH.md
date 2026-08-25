@@ -626,14 +626,14 @@ tracing::info!(model_id = %config.model_id, model_dir = %model_dir.display(), "m
 | A4 | Background tokio::spawn for S3 upload does not interfere with graceful shutdown | Architecture Patterns | Upload may be interrupted; D-12 explicitly accepts this tradeoff |
 | A5 | aws-sdk-s3 1.143 uses `body.collect().await?.into_bytes()` pattern for download | Code Examples | API changed; fallback: check docs.rs for current API |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Model ID splitting for hf-hub**
+1. **Model ID splitting for hf-hub** — RESOLVED: Split on first `/`. If no `/`, treat the entire string as both owner and name. Implemented in split_model_id() in hf.rs (Plan 03-01).
    - What we know: `HFClient.model(owner, name)` takes separate strings. The existing test uses `client.model("Xenova", "distilbert-base-uncased-finetuned-sst-2-english")`.
    - What's unclear: How to handle model IDs without an owner prefix (e.g., `"bert-base-uncased"`). Some HF models live under user accounts, not organizations.
    - Recommendation: Split on first `/`. If no `/`, treat the entire string as both owner and name. Validate with the test model. If hf-hub rejects this, check for a single-argument model ID method.
 
-2. **S3 cache directory vs HF cache directory separation**
+2. **S3 cache directory vs HF cache directory separation** — RESOLVED: Use separate subdirectory `{HF_HOME}/hephaestus/s3-cache/{model_id}/` for S3 downloads. Implemented in resolver.rs S3 tier (Plan 03-02).
    - What we know: D-07 says "Local model cache uses the HuggingFace cache directory." For HF downloads, this is natural (hf-hub caches there). For S3 downloads, we need a local landing directory.
    - What's unclear: Should S3 downloads go into the HF cache structure, or a separate `{HF_HOME}/hephaestus/` directory?
    - Recommendation: Use a separate subdirectory `{HF_HOME}/hephaestus/s3-cache/{model_id}/` for S3 downloads. This avoids conflicting with hf-hub's content-addressed blob layout while still being under the same parent. The resolver returns whichever path has the files.
