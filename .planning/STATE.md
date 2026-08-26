@@ -2,44 +2,44 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: model-resolution
+current_phase: 4
+current_phase_name: Additional Profiles and Dynamic Batching
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-08-26T13:18:56.882Z"
+last_updated: "2026-08-26T14:10:19.703Z"
 last_activity: 2026-08-26
-last_activity_desc: Phase 03 execution started
+last_activity_desc: Phase 03 complete, transitioned to Phase 4
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 7
-  percent: 40
+  completed_plans: 9
+  percent: 60
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-22)
+See: .planning/PROJECT.md (updated 2026-08-26)
 
 **Core value:** A single Rust binary that takes a model name, resolves it to ONNX files, and serves inference with full pre/post-processing -- replacing every per-model Python runtime in the cluster.
-**Current focus:** Phase 03 — model-resolution
+**Current focus:** Phase 04 — additional-profiles-and-dynamic-batching
 
 ## Current Position
 
-Phase: 03 (model-resolution) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 03
-Last activity: 2026-08-26 — Phase 03 execution started
+Phase: 4 — Additional Profiles and Dynamic Batching
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-26 — Phase 03 complete, transitioned to Phase 4
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [████████████████████] 9/9 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
+- Total plans completed: 5
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -48,6 +48,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3 | - | - |
+| 03 | 2 | - | - |
 
 **Recent Trend:**
 
@@ -89,6 +90,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Deep-module StageTimer hides all metrics crate interaction; handlers never touch metrics macros
 - [Phase ?]: Conditional OTel layer via Option in subscriber registry; None passes through with zero overhead
 - [Phase ?]: Per-request tracing events with model_id/latency_ms/status on all handler exit paths (OBSV-02)
+- [Phase 03]: Used std::env::var("HOME") instead of dirs crate for HF cache directory
+- [Phase 03]: Vec<u8> for S3 file content instead of bytes::Bytes to avoid adding direct bytes dependency
+- [Phase 03]: Concrete StubForgeClient field in ModelResolver -- Phase 5 will generalize to trait object
+- [Phase 03]: tempfile::TempDir::keep() for atomic download pattern (into_path deprecated)
 
 ### Pending Todos
 
@@ -109,6 +114,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-25T00:51:28.677Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-model-resolution/03-CONTEXT.md
+Last session: 2026-08-26
+Stopped at: Phase 03 complete, ready to plan Phase 04
+Resume file: None

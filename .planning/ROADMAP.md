@@ -144,6 +144,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Core Inference Engine | 3/3 | Complete    | 2026-08-23 |
 | 2. HTTP Serving and Observability | 4/4 | Complete   | 2026-08-24 |
-| 3. Model Resolution | 2/2 | Complete   | 2026-08-26 |
+| 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
 | 4. Additional Profiles and Dynamic Batching | 0/0 | Not started | - |
 | 5. Forge Conversion Service | 0/0 | Not started | - |

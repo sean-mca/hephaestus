@@ -18,16 +18,16 @@ A single Rust binary that takes a model name, resolves it to ONNX files (from S3
 - [x] Tokenization via HuggingFace `tokenizers` crate (TOKN-01, TOKN-02, TOKN-03) — Validated in Phase 01
 - [x] Classifier pipeline profile with softmax post-processing (PROF-01) — Validated in Phase 01
 - [x] Pipeline trait with Ousterhout deep-module interface (PROF-05, XCUT-01) — Validated in Phase 01
+- [x] 3-tier model resolution: S3 cache → HuggingFace ONNX exports → Forge conversion (RSLV-01, RSLV-02, RSLV-03) — Validated in Phase 03
+- [x] Download models from HuggingFace via `hf-hub` crate (RSLV-02) — Validated in Phase 03
+- [x] Cache resolved ONNX models to S3 with background upload (RSLV-04) — Validated in Phase 03
+- [x] Model ID validation security gate rejects traversal/injection (RSLV-05) — Validated in Phase 03
 
 ### Active
 
 - [ ] Load and serve ONNX models via `ort` (ONNX Runtime Rust bindings)
-- [ ] 3-tier model resolution: S3 cache → HuggingFace ONNX exports → Forge conversion
-- [ ] Download models from HuggingFace via `hf-hub` crate
-- [ ] Cache resolved ONNX models to S3
 - [ ] Serve inference over gRPC and HTTP/REST
 - [ ] Model type profiles with full pre/post-processing pipelines (classifiers first)
-- [ ] Tokenization via HuggingFace `tokenizers` crate (load tokenizer.json from HF/S3)
 - [ ] One model per pod, configured via environment variables
 - [ ] CPU and GPU execution provider support
 - [ ] Configurable dynamic batching (default: single request)
@@ -101,4 +101,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-22 after initialization*
+*Last updated: 2026-08-26 after Phase 03*
