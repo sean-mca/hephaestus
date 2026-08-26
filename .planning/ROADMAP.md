@@ -168,7 +168,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
 | 4. Additional Profiles and Dynamic Batching | 4/4 | Complete   | 2026-08-26 |
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
-| 6. OpenDAL Storage Abstraction | 1/3 | In Progress|  |
+| 6. OpenDAL Storage Abstraction | 2/3 | In Progress|  |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -184,12 +184,12 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
   5. Both Rust and Python services share the same STORAGE_* env var naming convention
   6. aws-sdk-s3, aws-config, and boto3 are fully removed from dependencies
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
 
 - [x] 06-01-PLAN.md — Rust resolve crate: OpenDAL storage module and resolver migration
-- [ ] 06-03-PLAN.md — Forge Python: OpenDAL migration (storage, config, queue, tests)
+- [x] 06-03-PLAN.md — Forge Python: OpenDAL migration (storage, config, queue, tests)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
