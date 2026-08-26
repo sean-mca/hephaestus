@@ -39,6 +39,88 @@ Architecture not yet mapped. Follow existing patterns found in the codebase.
 No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
 <!-- GSD:skills-end -->
 
+## Local Testing
+
+### Build
+
+```bash
+cargo build --workspace --release
+cargo test --workspace
+```
+
+### Run inference (sentiment classifier)
+
+```bash
+MODEL_ID=Xenova/distilbert-base-uncased-finetuned-sst-2-english \
+STORAGE_TYPE=none \
+PORT=8090 \
+./target/release/hephaestus
+```
+
+```bash
+curl -s -X POST http://localhost:8090/infer \
+  -H "Content-Type: application/json" \
+  -d '{"text": "This product is amazing"}'
+# → {"label":"POSITIVE","score":0.9998,"model_id":"...","latency_ms":2}
+```
+
+### Run inference (NER — BERT-based, requires token_type_ids)
+
+```bash
+MODEL_ID=Xenova/bert-base-NER \
+STORAGE_TYPE=none \
+PORT=8090 \
+./target/release/hephaestus
+```
+
+```bash
+curl -s -X POST http://localhost:8090/infer \
+  -H "Content-Type: application/json" \
+  -d '{"text": "John Smith works at Google in Mountain View, California."}'
+# → {"entities":[{"word":"John Smith","entity":"PER",...},{"word":"Google","entity":"ORG",...}],...}
+```
+
+### Run inference (sentence embeddings)
+
+```bash
+MODEL_ID=Xenova/multi-qa-distilbert-cos-v1 \
+STORAGE_TYPE=none \
+PORT=8090 \
+./target/release/hephaestus
+```
+
+```bash
+curl -s -X POST http://localhost:8090/infer \
+  -H "Content-Type: application/json" \
+  -d '{"text": "How do I reset my password?"}'
+# → {"embedding":[0.038,...768 floats...],"model_id":"...","latency_ms":14}
+```
+
+### Forge tests
+
+```bash
+cd forge && uv run pytest tests/ -v
+```
+
+### Health and metrics
+
+- `GET /healthz/live` — liveness probe
+- `GET /healthz/ready` — readiness probe (200 after warmup)
+- `GET /metrics` — Prometheus scrape endpoint
+
+### Key env vars
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MODEL_ID` | *(required)* | HuggingFace model identifier |
+| `STORAGE_TYPE` | `s3` | `s3`, `fs`, `gcs`, `azblob`, `none` |
+| `STORAGE_BUCKET` | — | Bucket name (required for cloud backends) |
+| `STORAGE_ROOT` | — | Root directory (required for `fs`) |
+| `PORT` | `8080` | HTTP listen port |
+| `EXECUTION_PROVIDER` | `cpu` | `cpu`, `cuda`, `tensorrt`, `coreml` |
+| `FORGE_URL` | — | Forge service URL (enables conversion tier) |
+| `MODEL_PROFILE` | *(auto)* | Override: `classifier`, `embeddings`, `seq2seq`, `token_classifier` |
+
 <!-- GSD:workflow-start source:GSD defaults -->
 ## GSD Workflow Enforcement
 
