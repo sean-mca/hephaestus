@@ -168,15 +168,29 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
 | 4. Additional Profiles and Dynamic Batching | 4/4 | Complete   | 2026-08-26 |
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
-| 6. OpenDAL Storage Abstraction | 0/0 | Pending    | — |
+| 6. OpenDAL Storage Abstraction | 0/3 | Planned    | — |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
 **Goal:** Replace aws-sdk-s3 with Apache OpenDAL for storage operations, enabling multi-cloud and local-fs backends via configuration
 **Requirements**: STOR-01
 **Depends on:** Phase 3
-**Plans:** 0 plans
+**Success Criteria** (what must be TRUE):
 
+  1. Runtime resolves models from storage using OpenDAL Operator (S3, fs, or memory backend)
+  2. STORAGE_TYPE=fs allows local development without S3 or localstack
+  3. STORAGE_TYPE=none disables the storage tier; resolution starts at HuggingFace
+  4. Forge uploads converted models via OpenDAL instead of boto3
+  5. Both Rust and Python services share the same STORAGE_* env var naming convention
+  6. aws-sdk-s3, aws-config, and boto3 are fully removed from dependencies
+
+**Plans:** 3 plans
 Plans:
+**Wave 1** *(parallel -- no file overlap)*
 
-- [ ] TBD (run /gsd-plan-phase 6 to break down)
+- [ ] 06-01-PLAN.md — Rust resolve crate: OpenDAL storage module and resolver migration
+- [ ] 06-03-PLAN.md — Forge Python: OpenDAL migration (storage, config, queue, tests)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-02-PLAN.md — Rust binary crate: Config STORAGE_* fields and Operator wiring
