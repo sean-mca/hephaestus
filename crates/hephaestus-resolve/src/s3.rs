@@ -307,7 +307,7 @@ mod tests {
 
         // Atomic rename.
         tokio::fs::rename(temp.path(), &final_dir).await.unwrap();
-        temp.keep();
+        let _ = temp.keep();
 
         // Verify files exist at final location.
         assert!(final_dir.join("model.onnx").exists());
@@ -345,7 +345,7 @@ mod tests {
         fs::rename(&temp_path, &final_path).unwrap();
 
         // keep() prevents destructor from removing temp_path.
-        temp.keep();
+        let _ = temp.keep();
 
         // Final location should still have the file.
         assert!(final_path.join("test.txt").exists());
