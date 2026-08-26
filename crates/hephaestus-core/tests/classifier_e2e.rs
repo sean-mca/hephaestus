@@ -64,7 +64,8 @@ async fn classify_positive_sentiment() {
     let model_dir = download_test_model().await;
 
     let mut pipeline =
-        ClassifierPipeline::new(&model_dir).expect("failed to construct classifier pipeline");
+        ClassifierPipeline::new(&model_dir, &hephaestus_core::ExecutionProvider::Cpu)
+            .expect("failed to construct classifier pipeline");
 
     let prepared = pipeline
         .prepare("I love this movie!".to_string())
