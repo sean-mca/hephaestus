@@ -14,7 +14,7 @@ use anyhow::Context;
 use hephaestus_api::{AppState, build_router};
 use hephaestus_core::{
     ClassifierPipeline, EmbeddingsPipeline, ModelProfile, PipelineKind, Seq2SeqPipeline,
-    detect_profile,
+    TokenClassifierPipeline, detect_profile,
 };
 use hephaestus_resolve::ModelResolver;
 
@@ -107,9 +107,10 @@ async fn main() -> Result<(), anyhow::Error> {
             PipelineKind::Seq2Seq(pipeline)
         }
         ModelProfile::TokenClassifier => {
-            anyhow::bail!(
-                "token classifier profile is not yet implemented (coming in Plan 02)"
-            );
+            let pipeline = TokenClassifierPipeline::new(&model_dir)
+                .context("failed to construct token classifier pipeline")?;
+            tracing::info!("token classifier pipeline constructed");
+            PipelineKind::TokenClassifier(pipeline)
         }
     };
 

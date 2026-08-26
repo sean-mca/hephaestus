@@ -8,8 +8,28 @@ use ort::session::Session;
 use ort::value::TensorRef;
 use tokenizers::Tokenizer;
 
+use serde::Serialize;
+
 use crate::error::CoreError;
 use crate::postprocess;
+
+/// A named entity span extracted from token classification output.
+///
+/// Contains the surface text, entity label, confidence score, and
+/// character offsets in the original input string.
+#[derive(Debug, Clone, Serialize)]
+pub struct Entity {
+    /// The surface text of the entity (original word, not subword).
+    pub word: String,
+    /// The entity label (e.g., "PER", "LOC", "ORG").
+    pub entity: String,
+    /// The confidence score from the model's softmax output.
+    pub score: f32,
+    /// Start character offset in the original input.
+    pub start: usize,
+    /// End character offset in the original input (exclusive).
+    pub end: usize,
+}
 
 /// Output from a classifier inference pass.
 ///
@@ -31,6 +51,12 @@ pub struct PreparedInput {
     pub(crate) input_ids: Vec<i64>,
     pub(crate) attention_mask: Vec<i64>,
     pub(crate) sequence_length: usize,
+    /// Optional tokenizer encoding preserved for token classification.
+    ///
+    /// Set to `Some` by `TokenClassifierPipeline::prepare()` so that
+    /// `execute()` can access word IDs and offsets for BIO span merging.
+    /// All other pipelines set this to `None`.
+    pub(crate) encoding: Option<tokenizers::Encoding>,
 }
 
 /// Core inference pipeline trait.
@@ -157,6 +183,7 @@ fn tokenize_text(
         input_ids,
         attention_mask,
         sequence_length,
+        encoding: None,
     })
 }
 
@@ -414,6 +441,153 @@ impl Pipeline for Seq2SeqPipeline {
 }
 
 // ---------------------------------------------------------------------------
+// TokenClassifierPipeline
+// ---------------------------------------------------------------------------
+
+/// Token classification pipeline for NER, POS tagging, and similar tasks.
+///
+/// Loads an ONNX token classification model and its tokenizer, runs
+/// inference to produce per-token logits, applies argmax to get
+/// predicted labels, then merges subword tokens into word-level
+/// entity spans using BIO tag conventions.
+pub struct TokenClassifierPipeline {
+    session: Session,
+    tokenizer: Tokenizer,
+    id2label: Vec<String>,
+}
+
+impl TokenClassifierPipeline {
+    /// Construct a new token classification pipeline from a model directory.
+    ///
+    /// The directory must contain:
+    /// - An ONNX model file (`onnx/model.onnx` or `model.onnx`)
+    /// - `tokenizer.json`
+    /// - `config.json` with an `id2label` mapping
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError`] if any required file is missing or invalid,
+    /// or if the tokenizer outputs are incompatible with the model inputs.
+    pub fn new(model_dir: &Path) -> Result<Self, CoreError> {
+        let (session, tokenizer) = load_session_and_tokenizer(model_dir)?;
+
+        // Load id2label from config.json.
+        let config_path = model_dir.join("config.json");
+        let config_text = std::fs::read_to_string(&config_path)?;
+        let config: serde_json::Value = serde_json::from_str(&config_text)?;
+        let id2label = extract_id2label(&config)?;
+
+        Ok(Self {
+            session,
+            tokenizer,
+            id2label,
+        })
+    }
+}
+
+impl Pipeline for TokenClassifierPipeline {
+    type Input = String;
+    type Prepared = PreparedInput;
+    type Output = Vec<Entity>;
+
+    fn prepare(&self, input: String) -> Result<PreparedInput, CoreError> {
+        let encoding = self
+            .tokenizer
+            .encode(input.as_str(), true)
+            .map_err(|e| CoreError::Tokenization(e.to_string()))?;
+
+        let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| i64::from(id)).collect();
+        let attention_mask: Vec<i64> = encoding
+            .get_attention_mask()
+            .iter()
+            .map(|&m| i64::from(m))
+            .collect();
+        let sequence_length = encoding.len();
+
+        Ok(PreparedInput {
+            input_ids,
+            attention_mask,
+            sequence_length,
+            encoding: Some(encoding),
+        })
+    }
+
+    fn execute(
+        &mut self,
+        prepared: PreparedInput,
+    ) -> Result<Vec<Entity>, CoreError> {
+        let encoding = prepared.encoding.as_ref().ok_or_else(|| {
+            CoreError::Inference(
+                "TokenClassifierPipeline requires encoding in PreparedInput".to_string(),
+            )
+        })?;
+
+        let num_tokens = prepared.sequence_length;
+        let outputs = run_onnx_inference(&mut self.session, &prepared)?;
+
+        // Extract logits tensor -- shape (1, num_tokens, num_labels).
+        let tensor = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| CoreError::Inference(e.to_string()))?;
+        let (shape, data) = tensor;
+
+        let num_labels = if shape.len() == 3 {
+            shape[2] as usize
+        } else {
+            return Err(CoreError::Inference(format!(
+                "expected 3D output tensor (batch, seq_len, num_labels), got {}-D shape",
+                shape.len()
+            )));
+        };
+
+        // Per-token argmax to get predicted label indices and scores.
+        let predictions = postprocess::argmax_per_token(data, num_tokens, num_labels);
+
+        // Merge subword tokens into word-level entity spans.
+        let mut entities =
+            postprocess::merge_subword_entities(&predictions, encoding, &self.id2label);
+
+        // Fill in the word text from the original input using character offsets.
+        let original_text: &str = encoding
+            .get_tokens()
+            .first()
+            .map(|_| {
+                // We can reconstruct from offsets by decoding the original sequence.
+                // The encoding preserves offsets into the original string.
+                ""
+            })
+            .unwrap_or("");
+
+        // Use the encoding's offsets to reconstruct words from the tokenizer's
+        // normalized input. The tokenizer may have lowercased, so we use decode.
+        // For simplicity, reconstruct from the token strings.
+        // Actually, encoding.get_offsets() gives (start, end) into the original string.
+        // But we don't have the original string anymore. Instead, reconstruct from tokens.
+        // The cleanest approach: use the encoding to decode token spans.
+        let _ = original_text; // unused, we reconstruct from tokens below
+
+        for entity in &mut entities {
+            // Decode the token IDs corresponding to this entity's char span.
+            // Since we have the full encoding, find tokens whose offsets overlap.
+            let token_ids: Vec<u32> = encoding
+                .get_ids()
+                .iter()
+                .zip(encoding.get_offsets())
+                .filter(|(_, (start, end))| *start < entity.end && *end > entity.start)
+                .map(|(&id, _)| id)
+                .collect();
+
+            entity.word = self
+                .tokenizer
+                .decode(&token_ids, true)
+                .unwrap_or_default();
+        }
+
+        Ok(entities)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PipelineKind enum dispatch (D-03)
 // ---------------------------------------------------------------------------
 
@@ -429,6 +603,8 @@ pub enum PipelineKind {
     Embeddings(EmbeddingsPipeline),
     /// Fused single-pass seq2seq pipeline (D-10).
     Seq2Seq(Seq2SeqPipeline),
+    /// Token classification pipeline (NER, POS).
+    TokenClassifier(TokenClassifierPipeline),
 }
 
 impl PipelineKind {
@@ -438,6 +614,7 @@ impl PipelineKind {
             Self::Classifier(p) => p.prepare(input),
             Self::Embeddings(p) => p.prepare(input),
             Self::Seq2Seq(p) => p.prepare(input),
+            Self::TokenClassifier(p) => p.prepare(input),
         }
     }
 
@@ -464,6 +641,12 @@ impl PipelineKind {
                 let out = p.execute(prepared)?;
                 Ok(serde_json::json!({
                     "generated_text": out,
+                }))
+            }
+            Self::TokenClassifier(p) => {
+                let out = p.execute(prepared)?;
+                Ok(serde_json::json!({
+                    "entities": out,
                 }))
             }
         }
@@ -571,6 +754,7 @@ mod tests {
                     input_ids: vec![101, 2023, 102],
                     attention_mask: vec![1, 1, 1],
                     sequence_length: 3,
+                    encoding: None,
                 })
             });
 

@@ -1,7 +1,8 @@
 //! Core inference pipeline for Hephaestus ONNX runtime.
 //!
 //! This crate defines the [`Pipeline`] trait contract and profile
-//! implementations ([`ClassifierPipeline`], [`EmbeddingsPipeline`]).
+//! implementations ([`ClassifierPipeline`], [`EmbeddingsPipeline`],
+//! [`Seq2SeqPipeline`], [`TokenClassifierPipeline`]).
 //! Callers interact only through `prepare()` and `execute()` -- all
 //! internal tokenization, tensor construction, and ONNX inference
 //! details are hidden behind the trait boundary.
@@ -16,7 +17,8 @@ pub(crate) mod postprocess;
 
 pub use error::CoreError;
 pub use pipeline::{
-    ClassifierOutput, ClassifierPipeline, EmbeddingsPipeline, Pipeline,
-    PipelineKind, PreparedInput, Seq2SeqPipeline,
+    ClassifierOutput, ClassifierPipeline, EmbeddingsPipeline, Entity,
+    Pipeline, PipelineKind, PreparedInput, Seq2SeqPipeline,
+    TokenClassifierPipeline,
 };
 pub use profile::{ModelProfile, detect_profile};

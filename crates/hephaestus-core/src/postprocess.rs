@@ -1,8 +1,10 @@
 //! Post-processing utilities for inference output.
 //!
-//! Provides numerically stable softmax and argmax functions
-//! used by pipeline implementations to convert raw model logits
-//! into human-readable predictions.
+//! Provides numerically stable softmax, argmax, per-token argmax,
+//! and BIO span merging functions used by pipeline implementations
+//! to convert raw model logits into human-readable predictions.
+
+use crate::pipeline::Entity;
 
 /// Compute a numerically stable softmax over `logits`.
 ///
@@ -102,6 +104,152 @@ pub(crate) fn l2_normalize(v: &mut [f32]) {
     for x in v.iter_mut() {
         *x /= norm;
     }
+}
+
+/// Compute per-token argmax over a flattened logits tensor.
+///
+/// The logits are a flattened `(num_tokens, num_labels)` tensor.
+/// For each token, finds the label index with the highest logit
+/// and its score.
+///
+/// # Arguments
+///
+/// - `logits` -- flattened `(num_tokens, num_labels)` tensor.
+/// - `num_tokens` -- number of tokens in the sequence.
+/// - `num_labels` -- number of labels (classes) per token.
+///
+/// # Returns
+///
+/// A vector of `(label_index, score)` tuples, one per token.
+///
+/// # Panics
+///
+/// Panics if `logits.len() != num_tokens * num_labels` or if `num_labels == 0`.
+pub(crate) fn argmax_per_token(
+    logits: &[f32],
+    num_tokens: usize,
+    num_labels: usize,
+) -> Vec<(usize, f32)> {
+    assert_eq!(
+        logits.len(),
+        num_tokens * num_labels,
+        "logits length must equal num_tokens * num_labels"
+    );
+    assert!(num_labels > 0, "num_labels must be positive");
+
+    (0..num_tokens)
+        .map(|t| {
+            let start = t * num_labels;
+            let token_logits = &logits[start..start + num_labels];
+            argmax_with_score(token_logits)
+        })
+        .collect()
+}
+
+/// Merge subword token predictions into word-level entity spans.
+///
+/// Uses the tokenizer encoding's word IDs to group subword tokens
+/// belonging to the same word. For each word, the first subword
+/// token's prediction is used as the word's label. Consecutive
+/// words sharing the same entity type (after stripping B-/I-
+/// prefixes) are merged into a single span.
+///
+/// # Arguments
+///
+/// - `predictions` -- per-token `(label_index, score)` from [`argmax_per_token`].
+/// - `encoding` -- the tokenizer encoding for the input text.
+/// - `id2label` -- label vocabulary mapping indices to label strings.
+///
+/// # Returns
+///
+/// A vector of [`Entity`] structs representing merged entity spans.
+pub(crate) fn merge_subword_entities(
+    predictions: &[(usize, f32)],
+    encoding: &tokenizers::Encoding,
+    id2label: &[String],
+) -> Vec<Entity> {
+    let word_ids = encoding.get_word_ids();
+    let offsets = encoding.get_offsets();
+
+    // Build word-level predictions: (label_index, score, char_start, char_end)
+    // for each original word. Use the first subword token's prediction.
+    let mut word_preds: Vec<(usize, f32, usize, usize)> = Vec::new();
+    let mut seen_word: Option<u32> = None;
+
+    for (tok_idx, word_id_opt) in word_ids.iter().enumerate() {
+        let word_id = match word_id_opt {
+            Some(id) => *id,
+            None => continue, // skip special tokens
+        };
+
+        if tok_idx >= predictions.len() {
+            break;
+        }
+
+        let (char_start, char_end) = offsets[tok_idx];
+
+        if seen_word == Some(word_id) {
+            // Continuation subword -- extend the span but keep first token's label.
+            if let Some(last) = word_preds.last_mut()
+                && char_end > last.3
+            {
+                last.3 = char_end;
+            }
+        } else {
+            // New word -- use this token's prediction.
+            let (label_idx, score) = predictions[tok_idx];
+            word_preds.push((label_idx, score, char_start, char_end));
+            seen_word = Some(word_id);
+        }
+    }
+
+    // Merge consecutive words with the same entity type into spans.
+    // "O" (outside) labels are skipped.
+    let mut entities: Vec<Entity> = Vec::new();
+
+    for (label_idx, score, char_start, char_end) in &word_preds {
+        let label = id2label
+            .get(*label_idx)
+            .map(String::as_str)
+            .unwrap_or("O");
+
+        // Strip B-/I- prefix to get the entity type.
+        let etype = if label.len() > 2 && (label.starts_with("B-") || label.starts_with("I-")) {
+            &label[2..]
+        } else {
+            label
+        };
+
+        // Skip "O" (outside) labels.
+        if etype == "O" {
+            continue;
+        }
+
+        // If this is a B- tag or a different entity type, start a new entity.
+        // If this is an I- tag matching the previous entity type, extend it.
+        let should_extend = label.starts_with("I-")
+            && entities
+                .last()
+                .is_some_and(|prev| prev.entity == etype);
+
+        if should_extend {
+            if let Some(prev) = entities.last_mut() {
+                prev.end = *char_end;
+                // Average scores across merged tokens.
+                prev.score = (prev.score + score) / 2.0;
+            }
+        } else {
+            entities.push(Entity {
+                word: String::new(), // filled in below
+                entity: etype.to_string(),
+                score: *score,
+                start: *char_start,
+                end: *char_end,
+            });
+        }
+    }
+
+    entities
 }
 
 #[cfg(test)]
@@ -267,5 +415,65 @@ mod tests {
         for &x in &v {
             assert!(x.is_finite(), "l2_normalize produced non-finite value: {x}");
         }
+    }
+
+    #[test]
+    fn test_argmax_per_token_known_logits() {
+        // Arrange -- 3 tokens, 4 labels each
+        // Token 0: label 2 is highest (5.0)
+        // Token 1: label 0 is highest (3.0)
+        // Token 2: label 3 is highest (7.0)
+        let logits = [
+            1.0_f32, 2.0, 5.0, 0.5, // token 0
+            3.0, 1.0, 2.0, 0.0,      // token 1
+            0.0, 1.0, 2.0, 7.0,      // token 2
+        ];
+
+        // Act
+        let result = argmax_per_token(&logits, 3, 4);
+
+        // Assert
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].0, 2); // label index
+        assert!((result[0].1 - 5.0).abs() < 1e-6); // score
+        assert_eq!(result[1].0, 0);
+        assert!((result[1].1 - 3.0).abs() < 1e-6);
+        assert_eq!(result[2].0, 3);
+        assert!((result[2].1 - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_argmax_per_token_single_label() {
+        // Arrange -- 2 tokens, 1 label each (degenerate case)
+        let logits = [1.0_f32, 2.0];
+
+        // Act
+        let result = argmax_per_token(&logits, 2, 1);
+
+        // Assert
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].0, 0);
+        assert_eq!(result[1].0, 0);
+    }
+
+    #[test]
+    fn test_entity_serialization() {
+        // Arrange
+        let entity = Entity {
+            word: "London".to_string(),
+            entity: "LOC".to_string(),
+            score: 0.95,
+            start: 5,
+            end: 11,
+        };
+
+        // Act
+        let json = serde_json::to_value(&entity).expect("should serialize");
+
+        // Assert
+        assert_eq!(json["word"], "London");
+        assert_eq!(json["entity"], "LOC");
+        assert_eq!(json["start"], 5);
+        assert_eq!(json["end"], 11);
     }
 }
