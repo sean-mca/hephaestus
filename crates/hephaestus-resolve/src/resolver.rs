@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::error::ResolveError;
+use crate::hf;
 
 /// Model resolver implementing the 3-tier resolution chain.
 ///
@@ -30,7 +31,31 @@ pub struct ModelResolver {
 /// Called as the first operation inside [`ModelResolver::resolve()`]
 /// before any tier logic.
 pub fn validate_model_id(model_id: &str) -> Result<(), ResolveError> {
-    todo!("RED: validate_model_id not implemented")
+    // Reject empty strings.
+    if model_id.is_empty() {
+        return Err(ResolveError::InvalidModelId {
+            model_id: model_id.to_string(),
+        });
+    }
+
+    // Reject characters outside the allowed set.
+    let is_allowed = |c: char| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.';
+    if !model_id.chars().all(is_allowed) {
+        return Err(ResolveError::InvalidModelId {
+            model_id: model_id.to_string(),
+        });
+    }
+
+    // Reject ".." path segments (directory traversal).
+    for segment in model_id.split('/') {
+        if segment == ".." {
+            return Err(ResolveError::InvalidModelId {
+                model_id: model_id.to_string(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 impl ModelResolver {
@@ -46,7 +71,24 @@ impl ModelResolver {
         s3_prefix: Option<&str>,
         forge_url: Option<&str>,
     ) -> Result<Self, ResolveError> {
-        todo!("RED: ModelResolver::new not implemented")
+        // Determine cache_dir from HF_HOME or default (D-07).
+        // hf-hub uses HF_HOME or ~/.cache/huggingface by default.
+        let cache_dir = match std::env::var("HF_HOME") {
+            Ok(home) => PathBuf::from(home),
+            Err(_) => {
+                let home = std::env::var("HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| PathBuf::from("."));
+                home.join(".cache").join("huggingface")
+            }
+        };
+
+        Ok(Self {
+            cache_dir,
+            s3_bucket: s3_bucket.map(String::from),
+            s3_prefix: s3_prefix.map(String::from),
+            forge_url: forge_url.map(String::from),
+        })
     }
 
     /// Resolve a model ID to a local directory containing ONNX files.
@@ -57,7 +99,29 @@ impl ModelResolver {
     ///
     /// Validates the model ID before any tier logic (T-03-01).
     pub async fn resolve(&self, model_id: &str) -> Result<PathBuf, ResolveError> {
-        todo!("RED: ModelResolver::resolve not implemented")
+        // T-03-01: validate model ID before any tier logic.
+        validate_model_id(model_id)?;
+
+        // Tier 1: S3 cache (placeholder for Plan 03-02).
+        if self.s3_bucket.is_some() {
+            tracing::debug!(model_id, "S3 tier not yet implemented");
+        }
+
+        // Tier 2: HuggingFace with retry (D-05).
+        let model_id_owned = model_id.to_string();
+        let model_dir = with_retry(3, Duration::from_millis(500), move || {
+            let id = model_id_owned.clone();
+            async move { hf::download_from_hf(&id).await }
+        })
+        .await?;
+
+        tracing::info!(
+            model_id,
+            model_dir = %model_dir.display(),
+            "model resolved from HuggingFace"
+        );
+
+        Ok(model_dir)
     }
 }
 
@@ -76,7 +140,25 @@ where
     Fut: std::future::Future<Output = Result<T, E>>,
     E: std::fmt::Display,
 {
-    todo!("RED: with_retry not implemented")
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match operation().await {
+            Ok(result) => return Ok(result),
+            Err(e) if attempt >= max_attempts => return Err(e),
+            Err(e) => {
+                let delay = base_delay * 2u32.pow(attempt - 1);
+                tracing::warn!(
+                    attempt,
+                    max_attempts,
+                    delay_ms = delay.as_millis() as u64,
+                    error = %e,
+                    "retrying after transient error"
+                );
+                tokio::time::sleep(delay).await;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
