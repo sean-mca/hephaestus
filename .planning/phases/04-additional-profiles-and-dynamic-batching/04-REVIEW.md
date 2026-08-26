@@ -1,6 +1,6 @@
 ---
 phase: 04-additional-profiles-and-dynamic-batching
-reviewed: 2026-08-26T19:45:00Z
+reviewed: 2026-08-26T21:30:00Z
 depth: standard
 files_reviewed: 12
 files_reviewed_list:
@@ -17,180 +17,178 @@ files_reviewed_list:
   - crates/hephaestus/src/config.rs
   - crates/hephaestus/src/main.rs
 findings:
-  critical: 4
-  warning: 5
-  info: 2
-  total: 11
+  critical: 1
+  warning: 4
+  info: 3
+  total: 8
 status: issues_found
 ---
 
 # Phase 04: Code Review Report
 
-**Reviewed:** 2026-08-26T19:45:00Z
+**Reviewed:** 2026-08-26T21:30:00Z
 **Depth:** standard
 **Files Reviewed:** 12
 **Status:** issues_found
 
 ## Summary
 
-Review of Phase 04 implementation covering additional pipeline profiles (Seq2Seq, TokenClassifier) and dynamic request batching. The core architecture is sound -- enum dispatch in `PipelineKind`, channel-based batcher with oneshot fan-out, and the handler's batching/direct branch are well-structured. However, the review found 4 critical issues including a runtime panic from missing config validation, silent data corruption from non-contiguous label maps, an incorrect averaging algorithm in entity merging, and inconsistent error handling between single and batch code paths. Additionally, 5 warnings covering panic-on-empty-input in postprocess functions, unsafe integer casts, and convention violations.
+Review of Phase 04 covering additional pipeline profiles (Seq2Seq, TokenClassifier) and dynamic request batching. The architecture is well-designed: enum dispatch in `PipelineKind`, channel-based batcher with oneshot fan-out, handler branching between batching and direct paths, and the `check_outputs_nonempty` guard on tensor access are all solid. Error handling is generally thorough -- `CoreError`-to-`ApiError` conversion, information-disclosure-safe error responses, and contiguity validation on `id2label` keys are well done. The prior review (2026-08-26T19:45:00Z) contained 9 findings that have since been fixed, verified by this re-review. This review focuses on the remaining defects.
+
+The one critical finding is an inconsistency in the postprocess module: `mean_pool` and `argmax_per_token` use panicking `assert!`/`assert_eq!` while their sibling functions (`softmax`, `argmax_with_score`) correctly return `Result`. A malformed ONNX model output could trigger these panics, crashing the process and killing all in-flight requests including those in the same batch.
 
 ## Critical Issues
 
-### CR-01: Missing batch_max_size validation causes runtime panic on zero
+### CR-01: Panicking assertions in production postprocess functions
 
-**File:** `crates/hephaestus/src/config.rs:91-93`, `crates/hephaestus/src/main.rs:119`
-**Issue:** The doc comment on `batch_max_size` (line 91) states "Values > 64 or < 1 are rejected at startup" but no validation code exists anywhere in the codebase. When `BATCH_MAX_SIZE=0`, the call chain is: `config.batch_max_size` (0) -> `Batcher::new(0)` -> `mpsc::channel(4 * 0)` -> `mpsc::channel(0)` which panics per tokio documentation ("This function panics if buffer is 0"). The process crashes with an unhelpful panic message instead of a clear config validation error.
+**File:** `crates/hephaestus-core/src/postprocess.rs:76-80` and `crates/hephaestus-core/src/postprocess.rs:140-145`
+**Issue:** `mean_pool` uses `assert_eq!` (line 76) and `argmax_per_token` uses `assert_eq!` (line 140) and `assert!` (line 145) to validate input shape invariants. These panic on violation rather than returning `Result`. This is inconsistent with `softmax` (line 18, returns `Result`) and `argmax_with_score` (line 38, returns `Result`) in the same module, which properly return `CoreError::Inference` for invalid input.
+
+While the invariants should hold when callers correctly derive dimensions from ONNX output tensors, the service loads user-specified models via `MODEL_ID`. A malformed ONNX export with inconsistent tensor shapes, or a pre-release ort v2 bug in `try_extract_tensor`, would trigger the assert and crash the entire process -- killing all concurrent in-flight requests rather than failing the single offending request.
+
+In the batch execution path, this is amplified: a single bad sample in `batch_postprocess_token_classifier` (line 1062, which calls `argmax_per_token`) would crash the process, killing all `batch_size` requests plus any other in-flight requests. Per project rule `err-result-over-panic.md`: prefer `Result` over panic for recoverable/expected error conditions including malformed data.
+
 **Fix:**
 ```rust
-// In config.rs, add a validate method called from main.rs after from_env():
-pub fn validate(&self) -> Result<(), anyhow::Error> {
-    if self.batch_enabled {
-        if self.batch_max_size < 1 || self.batch_max_size > 64 {
-            bail!(
-                "BATCH_MAX_SIZE must be between 1 and 64 (inclusive), got: {}",
-                self.batch_max_size
-            );
-        }
-    }
-    Ok(())
-}
-
-// In main.rs, after Config::from_env():
-let config = config::Config::from_env()?;
-config.validate()?;
-```
-
-### CR-02: Non-contiguous id2label keys silently corrupt label predictions
-
-**File:** `crates/hephaestus-core/src/pipeline.rs:1008-1034`
-**Issue:** `extract_id2label` sorts entries by numeric key then strips the keys, converting `{0: "NEG", 2: "POS"}` (gap at index 1) into `vec!["NEG", "POS"]`. Now argmax index 1 (second logit) maps to "POS" which is actually label 2 in the model. The model's output dimension has 3 classes but the label vec has length 2, so index 2 errors out while index 1 silently returns the wrong label. This is a data integrity bug that produces incorrect predictions without any error signal.
-**Fix:**
-```rust
-fn extract_id2label(config: &serde_json::Value) -> Result<Vec<String>, CoreError> {
-    // ... existing parsing code ...
-    entries.sort_by_key(|(idx, _)| *idx);
-
-    // Validate contiguous keys from 0..N.
-    for (expected, (actual, _)) in entries.iter().enumerate() {
-        if expected != *actual {
-            return Err(CoreError::ModelValidation(format!(
-                "id2label keys must be contiguous from 0; expected key {expected}, found {actual}",
-            )));
-        }
-    }
-
-    Ok(entries.into_iter().map(|(_, label)| label).collect())
-}
-```
-
-### CR-03: Entity score averaging is mathematically incorrect
-
-**File:** `crates/hephaestus-core/src/postprocess.rs:239`
-**Issue:** When merging consecutive entity tokens, the score is computed as `(prev.score + score) / 2.0`. This is a pairwise average, not a running average. For 3 merged tokens with scores s1, s2, s3: the result is `((s1+s2)/2 + s3)/2 = s1/4 + s2/4 + s3/2`. The last merged token gets 2x the weight of earlier tokens. With N tokens, the first token's contribution decays exponentially. This produces misleading confidence scores for multi-word entities.
-**Fix:**
-```rust
-// Track merge count in Entity or use a local counter.
-// Simplest fix: accumulate sum and count, divide at the end.
-// Alternative: store token count alongside the entity during merging.
-
-// In the merge loop, replace:
-//   prev.score = (prev.score + score) / 2.0;
-// With a weighted accumulation using a parallel count vec, or
-// restructure to track (sum, count) and compute average at the end:
-
-// After building word_preds, accumulate properly:
-if should_extend {
-    if let Some(prev) = entities.last_mut() {
-        prev.end = *char_end;
-        // Store running sum in score, track count separately,
-        // then normalize after the loop completes.
-    }
-}
-```
-
-### CR-04: Batch path silently returns empty label on argmax out-of-range
-
-**File:** `crates/hephaestus-core/src/pipeline.rs:843`
-**Issue:** In `batch_postprocess_classifier`, `id2label.get(idx).cloned().unwrap_or_default()` silently returns an empty string when the argmax index exceeds the label count. The single-request path (line 309-318) correctly returns `CoreError::Inference` for the same condition. This inconsistency means batch mode can produce predictions with `"label": ""` that slip through without error, while single-request mode correctly rejects them.
-**Fix:**
-```rust
-// Replace unwrap_or_default with proper error handling:
-let label = match id2label.get(idx) {
-    Some(l) => l.clone(),
-    None => {
+// postprocess.rs -- mean_pool: replace assert_eq! with Result
+pub(crate) fn mean_pool(
+    token_embeddings: &[f32],
+    attention_mask: &[i64],
+    hidden_dim: usize,
+) -> Result<Vec<f32>, CoreError> {
+    let seq_len = attention_mask.len();
+    if token_embeddings.len() != seq_len * hidden_dim {
         return Err(CoreError::Inference(format!(
-            "argmax index {idx} out of range for id2label (len {})",
-            id2label.len(),
+            "token_embeddings length {} != seq_len ({}) * hidden_dim ({})",
+            token_embeddings.len(), seq_len, hidden_dim,
         )));
     }
-};
+    // ... rest unchanged, but return Ok(pooled)
+}
+
+// postprocess.rs -- argmax_per_token: replace assert! with Result
+pub(crate) fn argmax_per_token(
+    logits: &[f32],
+    num_tokens: usize,
+    num_labels: usize,
+) -> Result<Vec<(usize, f32)>, CoreError> {
+    if num_labels == 0 {
+        return Err(CoreError::Inference("num_labels must be positive".into()));
+    }
+    if logits.len() != num_tokens * num_labels {
+        return Err(CoreError::Inference(format!(
+            "logits length {} != num_tokens ({}) * num_labels ({})",
+            logits.len(), num_tokens, num_labels,
+        )));
+    }
+    // ... rest unchanged
+}
 ```
+Note: callers of `mean_pool` (`EmbeddingsPipeline::execute` line 405, `batch_postprocess_embeddings` line 938) must be updated to propagate the `Result`.
 
 ## Warnings
 
-### WR-01: Postprocess functions panic on empty slices instead of returning Result
+### WR-01: Dead code block in TokenClassifierPipeline::execute
 
-**File:** `crates/hephaestus-core/src/postprocess.rs:17-24`, `crates/hephaestus-core/src/postprocess.rs:34-45`
-**Issue:** `softmax` panics on empty `logits` (the `fold` with `NEG_INFINITY` then divides by zero sum of empty exps). `argmax_with_score` returns `(0, NEG_INFINITY)` for empty input -- not a panic but a nonsensical result. These are library functions called with model-output data that could theoretically be empty (e.g., a model misconfigured with 0 output classes). The project rules `err-result-over-panic.md` and `anti-panic-expected.md` explicitly require `Result` for recoverable/expected error conditions including "malformed data".
-**Fix:** Change signatures to return `Result<Vec<f32>, CoreError>` and `Result<(usize, f32), CoreError>` with an early `if logits.is_empty()` check returning `Err(CoreError::Inference("empty logits slice"))`.
+**File:** `crates/hephaestus-core/src/pipeline.rs:611-627`
+**Issue:** Lines 611-627 contain a multi-line block that assigns `original_text` to `""` in all code paths, surrounds it with abandoned design comments ("We can reconstruct from offsets...", "Actually, encoding.get_offsets() gives..."), and then explicitly suppresses the unused variable with `let _ = original_text;`. This is remnant development code that does nothing. The actual entity word reconstruction happens at lines 629-644 using a different approach. This degrades readability and misleads readers about the word reconstruction strategy.
 
-### WR-02: Unsafe integer casts in seq2seq output decoding
+**Fix:** Delete lines 611-627 entirely. The working approach at lines 629-644 is self-documenting.
 
-**File:** `crates/hephaestus-core/src/pipeline.rs:446`, `crates/hephaestus-core/src/pipeline.rs:449`, `crates/hephaestus-core/src/pipeline.rs:904`, `crates/hephaestus-core/src/pipeline.rs:924`
-**Issue:** `i64 as u32` truncates negative values to large u32s (wrapping behavior). `f32.round() as u32` saturates NaN to 0 and negative values to 0 (Rust 2024 semantics). Both silently produce wrong token IDs that decode to garbled text. While negative token IDs are unusual, a malformed model or wrong data type extraction would trigger silent corruption rather than an error.
+### WR-02: Silent tokenizer decode failure in entity word reconstruction
+
+**File:** `crates/hephaestus-core/src/pipeline.rs:640-643` and `crates/hephaestus-core/src/pipeline.rs:1083-1084`
+**Issue:** Both the single-request path (line 643) and the batch path (line 1084) use `.unwrap_or_default()` when decoding entity word text from token IDs. If the tokenizer fails to decode (e.g., invalid token ID sequence after offset filtering), the entity silently gets an empty `word` field (`""`). Downstream consumers cannot distinguish "decode failed" from "entity has no text," producing API responses like `{"word": "", "entity": "PER", "score": 0.95}` that are confusing and potentially incorrect.
+
 **Fix:**
 ```rust
-// Replace `id as u32` with checked conversion:
-let id: u32 = id.try_into().map_err(|_| {
-    CoreError::Inference(format!("negative token ID {id} in seq2seq output"))
-})?;
+// Replace unwrap_or_default with error propagation:
+entity.word = self.tokenizer
+    .decode(&token_ids, true)
+    .map_err(|e| CoreError::Inference(format!(
+        "failed to decode entity word from token IDs: {e}"
+    )))?;
 ```
 
-### WR-03: Misleading `_receiver` variable name suggests unused binding
+### WR-03: `anyhow::Error` returned from library crate public functions
 
-**File:** `crates/hephaestus/src/main.rs:119`
-**Issue:** The variable `_receiver` uses Rust's underscore-prefix convention that signals "intentionally unused." However, `_receiver` is moved into the `batcher_handle` tuple and later destructured and used on line 125-128. This misleads readers into thinking the receiver is discarded. Unlike bare `_`, a prefixed `_name` does retain ownership, so no functional bug -- but it violates the naming convention and impairs readability.
-**Fix:** Rename to `receiver`:
+**File:** `crates/hephaestus-api/src/metrics.rs:28` and `crates/hephaestus-api/src/telemetry.rs:37`
+**Issue:** `install_recorder()` returns `Result<PrometheusHandle, anyhow::Error>` and `telemetry::init()` returns `Result<(), anyhow::Error>`. The `hephaestus-api` crate is a library consumed by the `hephaestus` binary. Per the project's technology stack documentation: "Use [anyhow] in main() and CLI, not in library traits" and per rule `err-thiserror-lib.md`: use thiserror for library error types. Both functions should use typed errors from the crate's own `ApiError` or a new startup error type, confining `anyhow` usage to the binary crate.
+
+**Fix:** Either add startup-specific error variants to `ApiError` or create a dedicated `SetupError` enum with `thiserror::Error` in the api crate, and use `anyhow::Context` only in the binary crate's `main()`.
+
+### WR-04: Test uses unsafe env var mutation without parallel test protection
+
+**File:** `crates/hephaestus/src/config.rs:241-254`
+**Issue:** The `from_env_with_defaults_has_correct_defaults` test uses `unsafe { std::env::set_var("MODEL_ID", "test-model") }` and `unsafe { std::env::remove_var("MODEL_ID") }`. In Rust 2024 edition, these are correctly marked `unsafe` because env var mutation is not thread-safe. The comment acknowledges the risk but claims the tests "are not run in parallel with other env-dependent tests" -- which is only true if `cargo test` is invoked with `--test-threads=1`. By default, Rust tests run in parallel and this test can race with any other test in the binary crate that reads environment variables (including the `envy::from_env` path). This is a flaky test pattern. Other tests in the same module avoid this by constructing `Config` directly.
+
+**Fix:** Construct `Config` directly like the other tests in this module, or use a `#[serial]` test attribute from the `serial_test` crate:
 ```rust
-let (batcher, receiver) = Batcher::new(config.batch_max_size as usize);
-Some((batcher, receiver))
+#[test]
+fn from_env_with_defaults_has_correct_defaults() {
+    let config = Config {
+        model_id: "test-model".to_string(),
+        model_path: None,
+        execution_provider: "cpu".to_string(),
+        log_level: "info".to_string(),
+        warmup_input: None,
+        port: 8080,
+        request_timeout_secs: 30,
+        shutdown_timeout_secs: 30,
+        otel_exporter_otlp_endpoint: None,
+        s3_bucket: None,
+        s3_prefix: None,
+        forge_url: None,
+        model_profile: None,
+        batch_enabled: false,
+        batch_max_size: 8,
+        batch_max_wait_ms: 50,
+    };
+    assert_eq!(config.model_id, "test-model");
+    assert_eq!(config.execution_provider, "cpu");
+    // ... etc
+}
 ```
-
-### WR-04: `anyhow::Error` returned from library crate function
-
-**File:** `crates/hephaestus-api/src/metrics.rs:28`
-**Issue:** `install_recorder()` returns `Result<PrometheusHandle, anyhow::Error>`. Per the project's technology stack guidelines and `err-thiserror-lib.md` rule: "Use thiserror for library error types" and "Use anyhow in main() and CLI, not in library traits." The `hephaestus-api` crate is a library consumed by the `hephaestus` binary; its public API should use typed errors.
-**Fix:** Either add a variant to `ApiError` (e.g., `ApiError::MetricsInit(String)`) or return `CoreError::Config` via the core error type, keeping `anyhow` usage confined to the binary crate.
-
-### WR-05: `outputs[0]` index access can panic on models with zero outputs
-
-**File:** `crates/hephaestus-core/src/pipeline.rs:297`, `371`, `444`, `549`, `821`, `856`, `894`, `913`, `946`
-**Issue:** All pipeline execute paths and batch post-processing functions access `outputs[0]` via direct indexing on `SessionOutputs`. If an ONNX model somehow produces zero output tensors (malformed export, wrong model file), this panics and crashes the process. While well-formed ONNX models always have outputs, this is a defensive programming gap in a system that loads user-specified models.
-**Fix:**
-```rust
-let first_output = outputs.get(0).ok_or_else(|| {
-    CoreError::Inference("ONNX model produced no output tensors".to_string())
-})?;
-```
-Note: verify that `SessionOutputs` supports `.get()` or an equivalent checked access in ort v2. If not, wrap the index access in a length check.
 
 ## Info
 
-### IN-01: Dead code in TokenClassifierPipeline::execute word reconstruction
+### IN-01: Batcher fan-out uses zip without length assertion
 
-**File:** `crates/hephaestus-core/src/pipeline.rs:571-587`
-**Issue:** Lines 571-587 contain a multi-line comment block with an unused `original_text` variable that is assigned `""`, immediately acknowledged as unused (`let _ = original_text`), and surrounded by comments debating different approaches to word reconstruction. The actual word reconstruction happens on lines 589-604 using a different approach. This reads as leftover development notes rather than intentional code.
-**Fix:** Remove the dead code block (lines 571-587). The working approach on lines 589-604 is self-documenting.
+**File:** `crates/hephaestus-api/src/batcher.rs:155`
+**Issue:** `replies.into_iter().zip(results)` would silently drop items from the longer iterator if `execute_batch` returned a different number of results than inputs. While `execute_batch` always returns exactly `batch_size` results by construction (all code paths map over `0..batch_size`), a `debug_assert_eq!(replies.len(), results.len())` before the zip would catch contract violations during development without runtime cost in release builds.
 
-### IN-02: `batch_max_wait_ms` has no upper bound validation
+**Fix:**
+```rust
+debug_assert_eq!(
+    replies.len(), results.len(),
+    "execute_batch must return exactly one result per input"
+);
+for (reply, result) in replies.into_iter().zip(results) {
+    let _ = reply.send(result);
+}
+```
 
-**File:** `crates/hephaestus/src/config.rs:97-98`
-**Issue:** `batch_max_wait_ms` defaults to 50 but accepts any `u64` value. A misconfigured value like `BATCH_MAX_WAIT_MS=60000` (60 seconds) would cause the batcher to wait a full minute before executing a partial batch, causing all requests to time out (default 30s timeout). While the request timeout provides a safety net, the silent interaction between these two config values can produce confusing behavior.
-**Fix:** Add validation that `batch_max_wait_ms < request_timeout_secs * 1000` in the `validate()` method suggested in CR-01.
+### IN-02: Watchdog `process::exit(1)` bypasses OTel span flush
+
+**File:** `crates/hephaestus/src/main.rs:200`
+**Issue:** The drain-timeout watchdog calls `std::process::exit(1)` which terminates the process without running Rust destructors. This means the OTel provider shutdown at line 212 (`hephaestus_api::telemetry::shutdown()`) is skipped, and any buffered trace spans are lost. This is an intentional design choice (forced exit after drain timeout) but means diagnostic data from the shutdown period is unavailable for post-incident analysis.
+
+**Fix:** Consider logging a final structured event before exit to ensure at least the forced-exit event itself is captured in stdout logs (which are flushed by `process::exit`):
+```rust
+// Already present at line 197-199, so this is informational only.
+// The structured JSON log at line 197 IS captured because stdout
+// is flushed by process::exit. Only OTel spans are lost.
+```
+
+### IN-03: No per-request inference stage metric in batch execution path
+
+**File:** `crates/hephaestus-api/src/handlers.rs:65-79`
+**Issue:** In the batching path, `StageTimer::time("tokenization", ...)` records per-request tokenization duration, but the actual ONNX inference happens inside `batcher_loop` (via `execute_batch`) without per-request stage timing. The `finish_request` metric captures total latency, but the "inference" stage histogram is only populated in the direct (non-batching) path. This creates an observability gap: operators cannot compare tokenization vs. inference latency when batching is enabled.
+
+**Fix:** Record batch inference duration in `batcher_loop` and attribute it (or its per-sample average) to the "inference" stage metric. Alternatively, document the gap so operators know to derive inference time as `total_request_time - tokenization_time` when analyzing batch-mode performance.
 
 ---
 
-_Reviewed: 2026-08-26T19:45:00Z_
+_Reviewed: 2026-08-26T21:30:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
