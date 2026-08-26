@@ -118,7 +118,7 @@ Plans:
   4. User can enable dynamic batching via configuration, collecting requests over a time window for batched inference
   5. Batching is disabled by default; when enabled, max batch size and max wait time are configurable per deployment
 
-**Plans:** 3/4 plans complete
+**Plans:** 4/4 plans complete
 Plans:
 **Wave 1**
 
@@ -134,7 +134,7 @@ Plans:
 
 **Wave 4** *(gap closure)*
 
-- [ ] 04-04-PLAN.md — Gap closure: config validation, id2label contiguity, NER score averaging, defensive error handling
+- [x] 04-04-PLAN.md — Gap closure: config validation, id2label contiguity, NER score averaging, defensive error handling
 
 ### Phase 5: Forge Conversion Service
 
@@ -161,5 +161,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Core Inference Engine | 3/3 | Complete    | 2026-08-23 |
 | 2. HTTP Serving and Observability | 4/4 | Complete   | 2026-08-24 |
 | 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
-| 4. Additional Profiles and Dynamic Batching | 3/3 | Complete   | 2026-08-26 |
+| 4. Additional Profiles and Dynamic Batching | 4/4 | Complete   | 2026-08-26 |
 | 5. Forge Conversion Service | 0/0 | Not started | - |
