@@ -81,6 +81,21 @@ pub struct Config {
     /// Accepted values: `classifier`, `embeddings`, `seq2seq`, `token_classifier`.
     #[serde(default)]
     pub model_profile: Option<String>,
+
+    /// Enable dynamic request batching (env `BATCH_ENABLED`, D-07, BTCH-02).
+    /// When false (default), requests flow through the direct path with zero overhead.
+    #[serde(default)]
+    pub batch_enabled: bool,
+
+    /// Maximum number of requests to collect in a single batch (env `BATCH_MAX_SIZE`, D-09, BTCH-03).
+    /// Defaults to 8. Values > 64 or < 1 are rejected at startup.
+    #[serde(default = "default_batch_max_size")]
+    pub batch_max_size: u32,
+
+    /// Maximum time in milliseconds to wait for a full batch before executing (env `BATCH_MAX_WAIT_MS`, D-09, BTCH-03).
+    /// Defaults to 50ms.
+    #[serde(default = "default_batch_max_wait_ms")]
+    pub batch_max_wait_ms: u64,
 }
 
 fn default_ep() -> String {
@@ -101,6 +116,14 @@ fn default_request_timeout_secs() -> u64 {
 
 fn default_shutdown_timeout_secs() -> u64 {
     30
+}
+
+fn default_batch_max_size() -> u32 {
+    8
+}
+
+fn default_batch_max_wait_ms() -> u64 {
+    50
 }
 
 impl Config {
@@ -174,6 +197,9 @@ mod tests {
             s3_prefix: None,
             forge_url: None,
             model_profile: None,
+            batch_enabled: false,
+            batch_max_size: 8,
+            batch_max_wait_ms: 50,
         }
     }
 
@@ -270,5 +296,30 @@ mod tests {
             msg.contains("does not exist"),
             "error should mention 'does not exist': {msg}"
         );
+    }
+
+    #[test]
+    fn test_batch_config_defaults() {
+        // Arrange
+        let config = config_with_model_path(None);
+
+        // Assert -- batch fields should have their defaults
+        assert!(!config.batch_enabled, "batch_enabled should default to false");
+        assert_eq!(config.batch_max_size, 8, "batch_max_size should default to 8");
+        assert_eq!(config.batch_max_wait_ms, 50, "batch_max_wait_ms should default to 50");
+    }
+
+    #[test]
+    fn test_batch_config_custom_values() {
+        // Arrange
+        let mut config = config_with_model_path(None);
+        config.batch_enabled = true;
+        config.batch_max_size = 16;
+        config.batch_max_wait_ms = 100;
+
+        // Assert
+        assert!(config.batch_enabled);
+        assert_eq!(config.batch_max_size, 16);
+        assert_eq!(config.batch_max_wait_ms, 100);
     }
 }

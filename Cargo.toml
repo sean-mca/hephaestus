@@ -47,6 +47,14 @@ reqwest = { version = "0.13", features = ["json"] }
 
 # Dev/test dependencies
 hf-hub = "1.0"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 mockall = "0.15"
 tempfile = "3"
+
+
+[profile.release]
+opt-level = 3          # Maximum optimization
+lto = "fat"            # Full link-time optimization
+codegen-units = 1      # Better optimization, slower compile
+panic = "abort"        # Smaller binary, no unwinding
+strip = true           # Remove symbols

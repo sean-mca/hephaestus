@@ -11,6 +11,8 @@ use hephaestus_core::PipelineKind;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::Mutex;
 
+use crate::batcher::Batcher;
+
 /// Shared application state for all HTTP handlers.
 ///
 /// Constructed once at startup in the binary crate and shared via
@@ -38,15 +40,23 @@ pub struct AppState {
 
     /// Prometheus metrics handle for rendering `/metrics` endpoint (OBSV-01).
     metrics_handle: PrometheusHandle,
+
+    /// Optional dynamic batcher handle. `Some` when `BATCH_ENABLED=true`;
+    /// `None` when batching is disabled (default, zero overhead per D-07).
+    batcher: Option<Batcher>,
 }
 
 impl AppState {
     /// Construct new application state.
+    ///
+    /// Pass `Some(batcher)` when dynamic batching is enabled, or `None`
+    /// for the default direct-execution path (zero overhead per D-07).
     pub fn new(
         pipeline: PipelineKind,
         model_id: String,
         request_timeout: Duration,
         metrics_handle: PrometheusHandle,
+        batcher: Option<Batcher>,
     ) -> Self {
         Self {
             pipeline: Mutex::new(pipeline),
@@ -55,6 +65,7 @@ impl AppState {
             start_time: Instant::now(),
             request_timeout,
             metrics_handle,
+            batcher,
         }
     }
 
@@ -93,8 +104,17 @@ impl AppState {
         self.pipeline.lock().await
     }
 
-    /// Check whether dynamic batching is enabled (stub for Plan 03).
+    /// Check whether dynamic batching is enabled.
+    ///
+    /// Returns `true` when a [`Batcher`] handle was provided at construction
+    /// (i.e., `BATCH_ENABLED=true`). When `false`, the handler uses the
+    /// direct execution path with zero batching overhead (D-07).
     pub fn is_batching_enabled(&self) -> bool {
-        false
+        self.batcher.is_some()
+    }
+
+    /// Reference to the batcher handle, if batching is enabled.
+    pub fn batcher(&self) -> Option<&Batcher> {
+        self.batcher.as_ref()
     }
 }

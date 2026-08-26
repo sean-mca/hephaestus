@@ -59,6 +59,26 @@ pub struct PreparedInput {
     pub(crate) encoding: Option<tokenizers::Encoding>,
 }
 
+impl PreparedInput {
+    /// Construct a `PreparedInput` for testing purposes.
+    ///
+    /// This bypasses the `pub(crate)` restriction on fields so that
+    /// tests in downstream crates (e.g., `hephaestus-api`) can create
+    /// instances without a real tokenizer. Not intended for production use.
+    pub fn new_for_test(
+        input_ids: Vec<i64>,
+        attention_mask: Vec<i64>,
+        sequence_length: usize,
+    ) -> Self {
+        Self {
+            input_ids,
+            attention_mask,
+            sequence_length,
+            encoding: None,
+        }
+    }
+}
+
 /// Core inference pipeline trait.
 ///
 /// Each model profile (classifier, embeddings, etc.) implements this trait.
@@ -618,6 +638,107 @@ impl PipelineKind {
         }
     }
 
+    /// Execute batched inference for multiple prepared inputs.
+    ///
+    /// Pads all inputs to the maximum sequence length, constructs batch
+    /// tensors, runs a single `session.run()` call, then splits the
+    /// output by sample and applies profile-specific post-processing.
+    ///
+    /// Returns one `Result` per input sample. The method matches on the
+    /// variant to access session, tokenizer, and id2label directly,
+    /// avoiding borrow conflicts between the mutable session borrow
+    /// (needed for `session.run()`) and the immutable reads for
+    /// post-processing.
+    pub fn execute_batch(
+        &mut self,
+        batch: Vec<PreparedInput>,
+    ) -> Vec<Result<serde_json::Value, CoreError>> {
+        if batch.is_empty() {
+            return Vec::new();
+        }
+
+        let batch_size = batch.len();
+        let max_seq_len = batch.iter().map(|p| p.sequence_length).max().unwrap_or(0);
+
+        // Pad and stack into batch tensors.
+        let (input_ids_array, attention_mask_array) =
+            match pad_and_stack(&batch, batch_size, max_seq_len) {
+                Ok(arrays) => arrays,
+                Err(e) => {
+                    return (0..batch_size)
+                        .map(|_| Err(CoreError::Inference(e.to_string())))
+                        .collect();
+                }
+            };
+
+        let input_ids_tensor = match TensorRef::from_array_view(input_ids_array.view()) {
+            Ok(t) => t,
+            Err(e) => {
+                return (0..batch_size)
+                    .map(|_| Err(CoreError::Inference(e.to_string())))
+                    .collect();
+            }
+        };
+        let attention_mask_tensor = match TensorRef::from_array_view(attention_mask_array.view()) {
+            Ok(t) => t,
+            Err(e) => {
+                return (0..batch_size)
+                    .map(|_| Err(CoreError::Inference(e.to_string())))
+                    .collect();
+            }
+        };
+
+        let ort_inputs = ort::inputs![
+            "input_ids" => input_ids_tensor,
+            "attention_mask" => attention_mask_tensor,
+        ];
+
+        // Match on variant to access session + postprocessing resources
+        // within the same borrow scope.
+        match self {
+            Self::Classifier(p) => {
+                let outputs = match p.session.run(ort_inputs) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        return (0..batch_size).map(|_| Err(CoreError::Inference(msg.clone()))).collect();
+                    }
+                };
+                batch_postprocess_classifier(outputs, batch_size, &p.id2label)
+            }
+            Self::Embeddings(p) => {
+                let outputs = match p.session.run(ort_inputs) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        return (0..batch_size).map(|_| Err(CoreError::Inference(msg.clone()))).collect();
+                    }
+                };
+                batch_postprocess_embeddings(outputs, batch_size, max_seq_len, &attention_mask_array)
+            }
+            Self::Seq2Seq(p) => {
+                let outputs = match p.session.run(ort_inputs) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        return (0..batch_size).map(|_| Err(CoreError::Inference(msg.clone()))).collect();
+                    }
+                };
+                batch_postprocess_seq2seq(outputs, batch_size, &p.tokenizer)
+            }
+            Self::TokenClassifier(p) => {
+                let outputs = match p.session.run(ort_inputs) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        return (0..batch_size).map(|_| Err(CoreError::Inference(msg.clone()))).collect();
+                    }
+                };
+                batch_postprocess_token_classifier(outputs, batch, batch_size, max_seq_len, &p.id2label, &p.tokenizer)
+            }
+        }
+    }
+
     /// Execute single inference and return model-determined output as JSON value (D-05).
     pub fn execute(
         &mut self,
@@ -651,6 +772,229 @@ impl PipelineKind {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Batch post-processing free functions
+// ---------------------------------------------------------------------------
+//
+// These are free functions (not methods on PipelineKind) to avoid borrow
+// conflicts: `session.run()` borrows `self` mutably (via the inner pipeline),
+// and the returned `SessionOutputs` holds that borrow. Post-processing needs
+// immutable access to tokenizer/id2label from the same inner pipeline, so
+// the variant match in `execute_batch` passes these references directly.
+
+/// Pad and stack batch inputs into 2D tensors.
+///
+/// Pads each sample's `input_ids` and `attention_mask` with zeros to
+/// `max_seq_len`, then stacks into `(batch_size, max_seq_len)` arrays.
+fn pad_and_stack(
+    batch: &[PreparedInput],
+    batch_size: usize,
+    max_seq_len: usize,
+) -> Result<(Array2<i64>, Array2<i64>), CoreError> {
+    let mut input_ids_flat = Vec::with_capacity(batch_size * max_seq_len);
+    let mut attention_mask_flat = Vec::with_capacity(batch_size * max_seq_len);
+    for prepared in batch {
+        let pad_len = max_seq_len - prepared.sequence_length;
+        input_ids_flat.extend_from_slice(&prepared.input_ids);
+        input_ids_flat.extend(std::iter::repeat_n(0i64, pad_len));
+        attention_mask_flat.extend_from_slice(&prepared.attention_mask);
+        attention_mask_flat.extend(std::iter::repeat_n(0i64, pad_len));
+    }
+
+    let input_ids_array = Array2::from_shape_vec((batch_size, max_seq_len), input_ids_flat)
+        .map_err(|e| CoreError::Inference(format!("batch tensor shape error: {e}")))?;
+    let attention_mask_array =
+        Array2::from_shape_vec((batch_size, max_seq_len), attention_mask_flat)
+            .map_err(|e| CoreError::Inference(format!("batch tensor shape error: {e}")))?;
+
+    Ok((input_ids_array, attention_mask_array))
+}
+
+/// Classifier batch post-processing: softmax + argmax per sample.
+fn batch_postprocess_classifier(
+    outputs: ort::session::SessionOutputs<'_>,
+    batch_size: usize,
+    id2label: &[String],
+) -> Vec<Result<serde_json::Value, CoreError>> {
+    let tensor = match outputs[0].try_extract_tensor::<f32>() {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = e.to_string();
+            return (0..batch_size)
+                .map(|_| Err(CoreError::Inference(msg.clone())))
+                .collect();
+        }
+    };
+    let (shape, data) = tensor;
+    let num_labels = if shape.len() == 2 { shape[1] as usize } else { 0 };
+    if num_labels == 0 {
+        return (0..batch_size)
+            .map(|_| Err(CoreError::Inference("unexpected classifier output shape".into())))
+            .collect();
+    }
+
+    (0..batch_size)
+        .map(|i| {
+            let sample_logits = &data[i * num_labels..(i + 1) * num_labels];
+            let probs = postprocess::softmax(sample_logits);
+            let (idx, score) = postprocess::argmax_with_score(&probs);
+            let label = id2label.get(idx).cloned().unwrap_or_default();
+            Ok(serde_json::json!({ "label": label, "score": score }))
+        })
+        .collect()
+}
+
+/// Embeddings batch post-processing: mean pool + L2 normalize per sample.
+fn batch_postprocess_embeddings(
+    outputs: ort::session::SessionOutputs<'_>,
+    batch_size: usize,
+    max_seq_len: usize,
+    attention_mask_array: &Array2<i64>,
+) -> Vec<Result<serde_json::Value, CoreError>> {
+    let tensor = match outputs[0].try_extract_tensor::<f32>() {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = e.to_string();
+            return (0..batch_size)
+                .map(|_| Err(CoreError::Inference(msg.clone())))
+                .collect();
+        }
+    };
+    let (shape, data) = tensor;
+    let hidden_dim = if shape.len() == 3 { shape[2] as usize } else { 0 };
+    if hidden_dim == 0 {
+        return (0..batch_size)
+            .map(|_| Err(CoreError::Inference("unexpected embeddings output shape".into())))
+            .collect();
+    }
+
+    (0..batch_size)
+        .map(|i| {
+            let sample_start = i * max_seq_len * hidden_dim;
+            let sample_end = sample_start + max_seq_len * hidden_dim;
+            let sample_data = &data[sample_start..sample_end];
+            let sample_mask = attention_mask_array.row(i);
+            let mask_vec: Vec<i64> = sample_mask.to_vec();
+            let mut pooled = postprocess::mean_pool(sample_data, &mask_vec, hidden_dim);
+            postprocess::l2_normalize(&mut pooled);
+            Ok(serde_json::json!({ "embedding": pooled }))
+        })
+        .collect()
+}
+
+/// Seq2Seq batch post-processing: extract token IDs and decode per sample.
+fn batch_postprocess_seq2seq(
+    outputs: ort::session::SessionOutputs<'_>,
+    batch_size: usize,
+    tokenizer: &Tokenizer,
+) -> Vec<Result<serde_json::Value, CoreError>> {
+    // Try i64 first, fall back to f32.
+    if let Ok(tensor) = outputs[0].try_extract_tensor::<i64>() {
+        let (shape, data) = tensor;
+        let seq_len = if shape.len() >= 2 {
+            shape[shape.len() - 1] as usize
+        } else {
+            data.len() / batch_size
+        };
+        return (0..batch_size)
+            .map(|i| {
+                let sample = &data[i * seq_len..(i + 1) * seq_len];
+                let ids: Vec<u32> = sample.iter().map(|&v| v as u32).collect();
+                match tokenizer.decode(&ids, true) {
+                    Ok(text) => Ok(serde_json::json!({ "generated_text": text })),
+                    Err(e) => Err(CoreError::Inference(e.to_string())),
+                }
+            })
+            .collect();
+    }
+
+    if let Ok(tensor) = outputs[0].try_extract_tensor::<f32>() {
+        let (shape, data) = tensor;
+        let seq_len = if shape.len() >= 2 {
+            shape[shape.len() - 1] as usize
+        } else {
+            data.len() / batch_size
+        };
+        return (0..batch_size)
+            .map(|i| {
+                let sample = &data[i * seq_len..(i + 1) * seq_len];
+                let ids: Vec<u32> = sample.iter().map(|&v| v.round() as u32).collect();
+                match tokenizer.decode(&ids, true) {
+                    Ok(text) => Ok(serde_json::json!({ "generated_text": text })),
+                    Err(e) => Err(CoreError::Inference(e.to_string())),
+                }
+            })
+            .collect();
+    }
+
+    (0..batch_size)
+        .map(|_| Err(CoreError::Inference("seq2seq output tensor is neither i64 nor f32".into())))
+        .collect()
+}
+
+/// Token classifier batch post-processing: per-token argmax + subword merging per sample.
+fn batch_postprocess_token_classifier(
+    outputs: ort::session::SessionOutputs<'_>,
+    batch: Vec<PreparedInput>,
+    batch_size: usize,
+    max_seq_len: usize,
+    id2label: &[String],
+    tokenizer: &Tokenizer,
+) -> Vec<Result<serde_json::Value, CoreError>> {
+    let tensor = match outputs[0].try_extract_tensor::<f32>() {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = e.to_string();
+            return (0..batch_size)
+                .map(|_| Err(CoreError::Inference(msg.clone())))
+                .collect();
+        }
+    };
+    let (shape, data) = tensor;
+    let num_labels = if shape.len() == 3 { shape[2] as usize } else { 0 };
+    if num_labels == 0 {
+        return (0..batch_size)
+            .map(|_| Err(CoreError::Inference("unexpected token classifier output shape".into())))
+            .collect();
+    }
+
+    batch
+        .into_iter()
+        .enumerate()
+        .map(|(i, prepared)| {
+            let num_tokens = prepared.sequence_length;
+            let sample_start = i * max_seq_len * num_labels;
+            let sample_data = &data[sample_start..sample_start + num_tokens * num_labels];
+            let predictions = postprocess::argmax_per_token(sample_data, num_tokens, num_labels);
+
+            let encoding = match &prepared.encoding {
+                Some(enc) => enc,
+                None => {
+                    return Err(CoreError::Inference(
+                        "TokenClassifier batch requires encoding in PreparedInput".into(),
+                    ))
+                }
+            };
+
+            let mut entities =
+                postprocess::merge_subword_entities(&predictions, encoding, id2label);
+
+            for entity in &mut entities {
+                let token_ids: Vec<u32> = encoding
+                    .get_ids()
+                    .iter()
+                    .zip(encoding.get_offsets())
+                    .filter(|(_, (start, end))| *start < entity.end && *end > entity.start)
+                    .map(|(&id, _)| id)
+                    .collect();
+                entity.word = tokenizer.decode(&token_ids, true).unwrap_or_default();
+            }
+
+            Ok(serde_json::json!({ "entities": entities }))
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

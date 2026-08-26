@@ -5,6 +5,7 @@
 //! Handlers access the inference pipeline through shared [`AppState`]
 //! and the router is constructed via [`build_router`].
 
+pub mod batcher;
 pub mod error;
 pub mod handlers;
 pub mod metrics;
@@ -12,6 +13,7 @@ pub mod routes;
 pub mod state;
 pub mod telemetry;
 
+pub use batcher::{Batcher, batcher_loop};
 pub use metrics::{StageTimer, install_recorder};
 pub use routes::build_router;
 pub use state::AppState;

@@ -120,6 +120,7 @@ async fn main() -> Result<(), anyhow::Error> {
         config.model_id.clone(),
         Duration::from_secs(config.request_timeout_secs),
         metrics_handle,
+        None, // Batcher initialized below when batch_enabled=true (Task 2).
     ));
 
     // 6. Run warmup inference pass (CORE-03), then flip readiness.
