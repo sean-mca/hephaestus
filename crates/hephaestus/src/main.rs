@@ -205,22 +205,38 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // 6. Run warmup inference pass (CORE-03), then flip readiness.
+    //    Warmup is a performance optimization (pre-warms caches), not a
+    //    correctness gate. Failure logs a warning but does not crash the pod.
     {
         let warmup_text = config
             .warmup_input
             .as_deref()
             .unwrap_or("This is a warmup inference pass.");
         let mut pipeline = state.lock_pipeline().await;
-        let prepared = pipeline
-            .prepare(warmup_text.to_string())
-            .context("warmup: failed to prepare input")?;
-        let _output = pipeline
-            .execute(prepared)
-            .context("warmup: failed to run inference")?;
-        tracing::info!(
-            model_id = %config.model_id,
-            "warmup inference complete"
-        );
+        match pipeline.prepare(warmup_text.to_string()) {
+            Ok(prepared) => match pipeline.execute(prepared) {
+                Ok(_output) => {
+                    tracing::info!(
+                        model_id = %config.model_id,
+                        "warmup inference complete"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        model_id = %config.model_id,
+                        error = %e,
+                        "warmup inference failed, continuing without warmup"
+                    );
+                }
+            },
+            Err(e) => {
+                tracing::warn!(
+                    model_id = %config.model_id,
+                    error = %e,
+                    "warmup prepare failed, continuing without warmup"
+                );
+            }
+        }
     }
     state.set_ready(true);
     tracing::info!("warmup complete, readiness enabled");
@@ -235,8 +251,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = build_router(state.clone());
 
     // Spawn drain-timeout watchdog (D-13).
+    //
+    // Uses a Notify instead of std::process::exit(1) so destructors
+    // and OTel shutdown run cleanly when the drain timeout expires.
+    let force_shutdown = Arc::new(tokio::sync::Notify::new());
     let shutdown_timeout = Duration::from_secs(config.shutdown_timeout_secs);
     let watchdog_state = state.clone();
+    let watchdog_notify = force_shutdown.clone();
     tokio::spawn(async move {
         // Wait until readiness is flipped to false (shutdown signal received).
         loop {
@@ -249,13 +270,21 @@ async fn main() -> Result<(), anyhow::Error> {
         tokio::time::sleep(shutdown_timeout).await;
         tracing::warn!(
             timeout_secs = shutdown_timeout.as_secs(),
-            "drain timeout exceeded, forcing exit"
+            "drain timeout exceeded, forcing server shutdown"
         );
-        std::process::exit(1);
+        watchdog_notify.notify_one();
     });
 
+    // Graceful shutdown waits for either the OS signal or the watchdog timeout.
+    let server_notify = force_shutdown.clone();
+    let server_state = state.clone();
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal(state.clone()))
+        .with_graceful_shutdown(async move {
+            tokio::select! {
+                () = shutdown_signal(server_state) => {},
+                () = server_notify.notified() => {},
+            }
+        })
         .await
         .context("HTTP server error")?;
 
