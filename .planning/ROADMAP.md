@@ -118,7 +118,7 @@ Plans:
   4. User can enable dynamic batching via configuration, collecting requests over a time window for batched inference
   5. Batching is disabled by default; when enabled, max batch size and max wait time are configurable per deployment
 
-**Plans:** 3/3 plans complete
+**Plans:** 3/4 plans complete
 Plans:
 **Wave 1**
 
@@ -131,6 +131,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 04-03-PLAN.md — Dynamic batching with channel-based request collection
+
+**Wave 4** *(gap closure)*
+
+- [ ] 04-04-PLAN.md — Gap closure: config validation, id2label contiguity, NER score averaging, defensive error handling
 
 ### Phase 5: Forge Conversion Service
 
