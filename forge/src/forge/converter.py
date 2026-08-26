@@ -41,7 +41,7 @@ def convert_model(model_id: str, output_dir: str) -> ConversionMetadata:
 
     elapsed = time.monotonic() - start
 
-    config = AutoConfig.from_pretrained(model_id)
+    config = AutoConfig.from_pretrained(output_dir)
 
     import optimum  # noqa: E402 -- lazy import for version string
 
