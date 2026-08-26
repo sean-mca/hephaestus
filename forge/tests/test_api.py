@@ -20,8 +20,11 @@ def app():
     by ASGITransport)."""
     application = create_app()
     application.state.settings = ForgeSettings(
-        s3_bucket="test-bucket",
-        s3_prefix="models",
+        storage_type="memory",
+        storage_bucket="",
+        storage_prefix="models",
+        storage_root="",
+        storage_region="",
         conversion_timeout_secs=60,
     )
     application.state.queue = ConversionQueue()

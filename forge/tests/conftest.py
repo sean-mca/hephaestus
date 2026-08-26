@@ -7,13 +7,11 @@ import os
 import tempfile
 from typing import Iterator
 
-import boto3
+import opendal
 import pytest
-from moto import mock_aws
 
 from forge.config import ForgeSettings
 
-TEST_BUCKET = "test-bucket"
 TEST_PREFIX = "models"
 
 
@@ -21,11 +19,20 @@ TEST_PREFIX = "models"
 def test_settings() -> ForgeSettings:
     """Return a ForgeSettings instance configured for testing."""
     return ForgeSettings(
-        s3_bucket=TEST_BUCKET,
-        s3_prefix=TEST_PREFIX,
+        storage_type="memory",
+        storage_bucket="",
+        storage_prefix=TEST_PREFIX,
+        storage_root="",
+        storage_region="",
         conversion_timeout_secs=60,
         log_level="debug",
     )
+
+
+@pytest.fixture()
+def memory_operator() -> opendal.Operator:
+    """Return an OpenDAL memory-backed Operator for testing."""
+    return opendal.Operator("memory")
 
 
 @pytest.fixture()
@@ -36,15 +43,6 @@ def tmp_output_dir() -> Iterator[str]:
     import shutil
 
     shutil.rmtree(d, ignore_errors=True)
-
-
-@pytest.fixture()
-def s3_mock():
-    """Start a moto S3 mock and create the test bucket."""
-    with mock_aws():
-        s3 = boto3.client("s3", region_name="us-east-1")
-        s3.create_bucket(Bucket=TEST_BUCKET)
-        yield s3
 
 
 @pytest.fixture()
