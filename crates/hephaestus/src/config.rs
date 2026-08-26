@@ -60,6 +60,21 @@ pub struct Config {
     /// Used by `hephaestus_api::telemetry::init` to conditionally activate OTel tracing.
     #[serde(default)]
     pub otel_exporter_otlp_endpoint: Option<String>,
+
+    /// S3 bucket for model cache (optional, env `S3_BUCKET`, D-03).
+    /// When set, the resolver checks S3 before HuggingFace.
+    #[serde(default)]
+    pub s3_bucket: Option<String>,
+
+    /// S3 key prefix for model files (optional, env `S3_PREFIX`).
+    /// Prepended to model ID when constructing S3 keys.
+    #[serde(default)]
+    pub s3_prefix: Option<String>,
+
+    /// Forge conversion service URL (optional, env `FORGE_URL`, D-09).
+    /// When set, enables the Forge conversion tier for models without ONNX exports.
+    #[serde(default)]
+    pub forge_url: Option<String>,
 }
 
 fn default_ep() -> String {
@@ -149,6 +164,9 @@ mod tests {
             request_timeout_secs: 30,
             shutdown_timeout_secs: 30,
             otel_exporter_otlp_endpoint: None,
+            s3_bucket: None,
+            s3_prefix: None,
+            forge_url: None,
         }
     }
 

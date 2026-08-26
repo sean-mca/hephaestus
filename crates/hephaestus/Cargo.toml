@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 hephaestus-core = { path = "../hephaestus-core" }
 hephaestus-api = { path = "../hephaestus-api" }
+hephaestus-resolve = { path = "../hephaestus-resolve" }
 anyhow.workspace = true
 axum.workspace = true
 envy.workspace = true

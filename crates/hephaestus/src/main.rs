@@ -12,6 +12,7 @@ use std::time::Duration;
 use anyhow::Context;
 use hephaestus_api::{AppState, build_router};
 use hephaestus_core::{ClassifierPipeline, Pipeline};
+use hephaestus_resolve::ModelResolver;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -32,6 +33,8 @@ async fn main() -> Result<(), anyhow::Error> {
         port = config.port,
         request_timeout_secs = config.request_timeout_secs,
         shutdown_timeout_secs = config.shutdown_timeout_secs,
+        s3_bucket = ?config.s3_bucket,
+        forge_url = ?config.forge_url,
         "configuration loaded"
     );
 
@@ -39,8 +42,29 @@ async fn main() -> Result<(), anyhow::Error> {
     let metrics_handle = hephaestus_api::install_recorder()?;
     tracing::info!("prometheus metrics recorder installed");
 
-    // 3. Resolve and validate model directory (T-01-01).
-    let model_dir = config.model_dir()?;
+    // 3. Resolve model directory: local override (MODEL_PATH) or automatic resolution.
+    let model_dir = if config.model_path.is_some() {
+        // Local path override -- preserves backward compatibility.
+        config.model_dir()?
+    } else {
+        // Automatic resolution: S3 cache -> HuggingFace -> Forge (RSLV-05).
+        let resolver = ModelResolver::new(
+            config.s3_bucket.as_deref(),
+            config.s3_prefix.as_deref(),
+            config.forge_url.as_deref(),
+        )
+        .context("failed to construct model resolver")?;
+
+        resolver
+            .resolve(&config.model_id)
+            .await
+            .context("failed to resolve model")?
+    };
+    tracing::info!(
+        model_id = %config.model_id,
+        model_dir = %model_dir.display(),
+        "model directory resolved"
+    );
 
     // 4. Construct the classifier pipeline.
     let pipeline = ClassifierPipeline::new(&model_dir)
