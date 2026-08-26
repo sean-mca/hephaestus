@@ -218,14 +218,30 @@ fn tokenize_text(
     })
 }
 
-/// Run ONNX inference with input_ids and attention_mask tensors.
+/// Check whether an ONNX session declares a `token_type_ids` input.
 ///
-/// Returns the raw output values from the session.
+/// BERT-family models require this input (a zeros tensor of the same
+/// shape as `input_ids`); DistilBERT-family models omit it. The check
+/// lets us conditionally provide it for backward compatibility.
+fn session_expects_token_type_ids(session: &Session) -> bool {
+    session
+        .inputs()
+        .iter()
+        .any(|input| input.name() == "token_type_ids")
+}
+
+/// Run ONNX inference with input_ids, attention_mask, and optional
+/// token_type_ids tensors.
+///
+/// Conditionally includes a `token_type_ids` zeros tensor when the
+/// session expects it (BERT-family models). DistilBERT models that
+/// omit `token_type_ids` from their inputs are handled without it.
 fn run_onnx_inference<'a>(
     session: &'a mut Session,
     prepared: &'a PreparedInput,
 ) -> Result<ort::session::SessionOutputs<'a>, CoreError> {
     let seq_len = prepared.sequence_length;
+    let needs_token_type_ids = session_expects_token_type_ids(session);
 
     let input_ids_array =
         Array2::from_shape_vec((1, seq_len), prepared.input_ids.clone())
@@ -233,6 +249,7 @@ fn run_onnx_inference<'a>(
     let attention_mask_array =
         Array2::from_shape_vec((1, seq_len), prepared.attention_mask.clone())
             .map_err(|e| CoreError::Inference(e.to_string()))?;
+    let token_type_ids_array = Array2::<i64>::zeros((1, seq_len));
 
     let input_ids_tensor = TensorRef::from_array_view(input_ids_array.view())
         .map_err(|e| CoreError::Inference(e.to_string()))?;
@@ -240,12 +257,25 @@ fn run_onnx_inference<'a>(
         TensorRef::from_array_view(attention_mask_array.view())
             .map_err(|e| CoreError::Inference(e.to_string()))?;
 
-    session
-        .run(ort::inputs![
-            "input_ids" => input_ids_tensor,
-            "attention_mask" => attention_mask_tensor,
-        ])
-        .map_err(|e| CoreError::Inference(e.to_string()))
+    if needs_token_type_ids {
+        let token_type_ids_tensor =
+            TensorRef::from_array_view(token_type_ids_array.view())
+                .map_err(|e| CoreError::Inference(e.to_string()))?;
+        session
+            .run(ort::inputs![
+                "input_ids" => input_ids_tensor,
+                "attention_mask" => attention_mask_tensor,
+                "token_type_ids" => token_type_ids_tensor,
+            ])
+            .map_err(|e| CoreError::Inference(e.to_string()))
+    } else {
+        session
+            .run(ort::inputs![
+                "input_ids" => input_ids_tensor,
+                "attention_mask" => attention_mask_tensor,
+            ])
+            .map_err(|e| CoreError::Inference(e.to_string()))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -700,6 +730,14 @@ impl PipelineKind {
         let batch_size = batch.len();
         let max_seq_len = batch.iter().map(|p| p.sequence_length).max().unwrap_or(0);
 
+        // Check if the session expects token_type_ids (BERT vs DistilBERT).
+        let needs_tti = match self {
+            Self::Classifier(p) => session_expects_token_type_ids(&p.session),
+            Self::Embeddings(p) => session_expects_token_type_ids(&p.session),
+            Self::Seq2Seq(p) => session_expects_token_type_ids(&p.session),
+            Self::TokenClassifier(p) => session_expects_token_type_ids(&p.session),
+        };
+
         // Pad and stack into batch tensors.
         let (input_ids_array, attention_mask_array) =
             match pad_and_stack(&batch, batch_size, max_seq_len) {
@@ -710,6 +748,7 @@ impl PipelineKind {
                         .collect();
                 }
             };
+        let token_type_ids_array = Array2::<i64>::zeros((batch_size, max_seq_len));
 
         let input_ids_tensor = match TensorRef::from_array_view(input_ids_array.view()) {
             Ok(t) => t,
@@ -728,10 +767,26 @@ impl PipelineKind {
             }
         };
 
-        let ort_inputs = ort::inputs![
-            "input_ids" => input_ids_tensor,
-            "attention_mask" => attention_mask_tensor,
-        ];
+        let ort_inputs = if needs_tti {
+            let tti_tensor = match TensorRef::from_array_view(token_type_ids_array.view()) {
+                Ok(t) => t,
+                Err(e) => {
+                    return (0..batch_size)
+                        .map(|_| Err(CoreError::Inference(e.to_string())))
+                        .collect();
+                }
+            };
+            ort::inputs![
+                "input_ids" => input_ids_tensor,
+                "attention_mask" => attention_mask_tensor,
+                "token_type_ids" => tti_tensor,
+            ]
+        } else {
+            ort::inputs![
+                "input_ids" => input_ids_tensor,
+                "attention_mask" => attention_mask_tensor,
+            ]
+        };
 
         // Match on variant to access session + postprocessing resources
         // within the same borrow scope.
@@ -1268,6 +1323,19 @@ mod tests {
         // Assert
         assert_eq!(output.label, "POSITIVE");
         assert!((output.score - 0.95).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_token_type_ids_zeros_tensor_shape() {
+        // Verify zeros tensor construction matches expected shape for
+        // both single inference (1, seq_len) and batch (batch_size, seq_len).
+        let single = Array2::<i64>::zeros((1, 7));
+        assert_eq!(single.shape(), &[1, 7]);
+        assert!(single.iter().all(|&v| v == 0));
+
+        let batch = Array2::<i64>::zeros((4, 12));
+        assert_eq!(batch.shape(), &[4, 12]);
+        assert!(batch.iter().all(|&v| v == 0));
     }
 
     #[test]
