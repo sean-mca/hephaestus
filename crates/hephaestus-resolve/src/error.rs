@@ -66,6 +66,6 @@ pub enum ResolveError {
     },
 
     /// Filesystem I/O error.
-    #[error("i/o error")]
+    #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
 }
