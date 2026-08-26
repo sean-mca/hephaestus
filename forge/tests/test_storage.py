@@ -48,13 +48,15 @@ def test_uploaded_files_are_retrievable(populated_output_dir: str, s3_mock) -> N
         assert len(body) > 0
 
 
-@mock_aws
-def test_upload_skips_subdirectories(populated_output_dir: str, s3_mock) -> None:
-    """Subdirectories inside the output dir are not uploaded."""
-    os.makedirs(os.path.join(populated_output_dir, "subdir"))
+def test_upload_includes_subdirectory_files(populated_output_dir: str, s3_mock) -> None:
+    """Files in subdirectories are included in the upload (recursive walk)."""
+    subdir = os.path.join(populated_output_dir, "onnx")
+    os.makedirs(subdir)
+    with open(os.path.join(subdir, "model.onnx"), "wb") as f:
+        f.write(b"onnx-subdir-model")
     model_id = "org/my-model"
     keys = upload_to_s3(populated_output_dir, TEST_BUCKET, TEST_PREFIX, model_id)
 
-    # Only the 3 files from populated_output_dir, not the subdir.
-    assert len(keys) == 3
-    assert all("subdir" not in k for k in keys)
+    # 3 original files + 1 file in onnx/ subdirectory.
+    assert len(keys) == 4
+    assert f"{TEST_PREFIX}/{model_id}/onnx/model.onnx" in keys

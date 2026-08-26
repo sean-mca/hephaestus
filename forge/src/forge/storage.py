@@ -14,11 +14,13 @@ def upload_to_s3(
     prefix: str,
     model_id: str,
 ) -> list[str]:
-    """Upload all files from *local_dir* to S3.
+    """Upload all files from *local_dir* to S3 (recursive).
 
-    S3 key format matches the Hephaestus resolver layout:
-    ``{prefix}/{model_id}/{filename}`` when *prefix* is non-empty,
-    ``{model_id}/{filename}`` otherwise.
+    Walks *local_dir* recursively so that files in subdirectories
+    (e.g., ``onnx/model.onnx``) are included.  S3 key format matches
+    the Hephaestus resolver layout:
+    ``{prefix}/{model_id}/{relative_path}`` when *prefix* is non-empty,
+    ``{model_id}/{relative_path}`` otherwise.
 
     Returns the list of uploaded S3 keys.
     """
@@ -29,15 +31,15 @@ def upload_to_s3(
     )
 
     uploaded_keys: list[str] = []
-    for filename in sorted(os.listdir(local_dir)):
-        filepath = os.path.join(local_dir, filename)
-        if not os.path.isfile(filepath):
-            continue
-        if prefix:
-            s3_key = f"{prefix}/{model_id}/{filename}"
-        else:
-            s3_key = f"{model_id}/{filename}"
-        s3.upload_file(filepath, bucket, s3_key, Config=config)
-        uploaded_keys.append(s3_key)
+    for root, _dirs, files in os.walk(local_dir):
+        for filename in sorted(files):
+            filepath = os.path.join(root, filename)
+            relative = os.path.relpath(filepath, local_dir)
+            if prefix:
+                s3_key = f"{prefix}/{model_id}/{relative}"
+            else:
+                s3_key = f"{model_id}/{relative}"
+            s3.upload_file(filepath, bucket, s3_key, Config=config)
+            uploaded_keys.append(s3_key)
 
     return uploaded_keys
