@@ -1823,6 +1823,7 @@ dependencies = [
  "aws-sdk-s3",
  "hf-hub",
  "mockall",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
