@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Model Resolution** - Self-building S3 cache with HuggingFace fallback and cache-back (completed 2026-08-26)
 - [x] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching (completed 2026-08-26)
 - [x] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format (completed 2026-08-26)
-- [ ] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry
+- [x] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry (completed 2026-08-26)
 
 ## Phase Details
 
@@ -170,7 +170,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Additional Profiles and Dynamic Batching | 4/4 | Complete   | 2026-08-26 |
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
 | 6. OpenDAL Storage Abstraction | 3/3 | Complete   | 2026-08-26 |
-| 7. Production Hardening | 0/1 | In Progress | — |
+| 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -209,8 +209,8 @@ Plans:
   4. Shutdown flushes logs and runs OTel cleanup before exiting
   5. HF download retry does not retry auth failures or 404s
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — token_type_ids support, body limits, resilient warmup/shutdown, smart retry
+- [x] 07-01-PLAN.md — token_type_ids support, body limits, resilient warmup/shutdown, smart retry

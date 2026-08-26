@@ -6,14 +6,14 @@ current_phase: 06
 current_phase_name: opendal-storage-abstraction
 status: verifying
 stopped_at: Phase 06 context gathered
-last_updated: "2026-08-26T22:15:51.938Z"
+last_updated: "2026-08-26T23:10:04.961Z"
 last_activity: 2026-08-26
 last_activity_desc: Phase 06 execution started
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 18
-  completed_plans: 18
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 19
+  completed_plans: 19
   percent: 100
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-26)
 
 **Core value:** A single Rust binary that takes a model name, resolves it to ONNX files, and serves inference with full pre/post-processing -- replacing every per-model Python runtime in the cluster.
-**Current focus:** Phase 06 — opendal-storage-abstraction
+**Current focus:** Phase 07 — production-hardening
 
 ## Current Position
 
-Phase: 06 (opendal-storage-abstraction) — EXECUTING
-Plan: 3 of 3
+Phase: 07 (production-hardening) — COMPLETE
+Plan: 1 of 1
 Status: Phase complete — ready for verification
-Last activity: 2026-08-26 — Phase 06 execution started
+Last activity: 2026-08-26 — Phase 07 plan 01 completed
 
 Progress: [████████████████████] 9/9 plans (100%)
 
@@ -70,6 +70,7 @@ Progress: [████████████████████] 9/9 pla
 | Phase 05 P02 | 8min | 2 tasks | 6 files |
 | Phase 06 P03 | 3min | 2 tasks | 8 files |
 | Phase 06 P02 | 4min | 2 tasks | 4 files |
+| Phase 07 P01 | 8min | 4 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -118,6 +119,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Operator root absorbs storage prefix so callers use model_id/filename paths only
 - [Phase ?]: STORAGE_PREFIX maps to OpenDAL root with leading slash for cloud backends, joined with STORAGE_ROOT for fs
 - [Phase ?]: Config validation runs before Operator construction -- startup fails fast on invalid storage_type or missing fs root
+- [Phase 07]: Conditional token_type_ids via session.inputs() check -- backward compatible with DistilBERT
+- [Phase 07]: Transient trait for retry classification instead of string matching in with_retry
+- [Phase 07]: tokio::sync::Notify for shutdown watchdog instead of process::exit
 
 ### Pending Todos
 
@@ -138,6 +142,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-26T22:15:51.934Z
-Stopped at: Phase 06 context gathered
-Resume file: .planning/phases/06-opendal-storage-abstraction/06-CONTEXT.md
+Last session: 2026-08-26T23:10:00Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None
