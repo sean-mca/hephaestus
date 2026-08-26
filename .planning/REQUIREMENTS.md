@@ -17,18 +17,18 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Model Profiles
 
 - [x] **PROF-01**: Classifier profile tokenizes input text, runs inference, applies softmax, and returns label + confidence score
-- [ ] **PROF-02**: Embeddings profile tokenizes input text, runs inference, applies L2 normalization, and returns a float vector
+- [x] **PROF-02**: Embeddings profile tokenizes input text, runs inference, applies L2 normalization, and returns a float vector
 - [ ] **PROF-03**: Seq2seq profile tokenizes input text, runs inference, decodes output tokens, and returns generated text
 - [ ] **PROF-04**: Token classifier profile tokenizes input text, runs inference, and returns per-token labels (NER, POS)
 - [x] **PROF-05**: All profiles implement a single `Pipeline` trait with minimal interface (Ousterhout deep module pattern)
 
 ### Model Resolution
 
-- [ ] **RSLV-01**: Runtime checks S3 cache for ONNX model files and loads from S3 if present
-- [ ] **RSLV-02**: On S3 miss, runtime checks HuggingFace for existing ONNX exports via `hf-hub` and downloads if available
-- [ ] **RSLV-03**: On HuggingFace miss, runtime calls the Forge service to convert the model to ONNX
-- [ ] **RSLV-04**: After downloading from HuggingFace or receiving from Forge, runtime uploads ONNX files back to S3 for future pods
-- [ ] **RSLV-05**: Model resolution exposes a single `resolve()` method that abstracts the 3-tier chain (Ousterhout deep module pattern)
+- [x] **RSLV-01**: Runtime checks S3 cache for ONNX model files and loads from S3 if present
+- [x] **RSLV-02**: On S3 miss, runtime checks HuggingFace for existing ONNX exports via `hf-hub` and downloads if available
+- [x] **RSLV-03**: On HuggingFace miss, runtime calls the Forge service to convert the model to ONNX
+- [x] **RSLV-04**: After downloading from HuggingFace or receiving from Forge, runtime uploads ONNX files back to S3 for future pods
+- [x] **RSLV-05**: Model resolution exposes a single `resolve()` method that abstracts the 3-tier chain (Ousterhout deep module pattern)
 
 ### Tokenization
 
@@ -115,15 +115,15 @@ Deferred to future release. Tracked but not in current roadmap.
 | CORE-03 | Phase 1 | Complete |
 | CORE-04 | Phase 2 | Complete |
 | PROF-01 | Phase 1 | Complete |
-| PROF-02 | Phase 4 | Pending |
+| PROF-02 | Phase 4 | Complete |
 | PROF-03 | Phase 4 | Pending |
 | PROF-04 | Phase 4 | Pending |
 | PROF-05 | Phase 1 | Complete |
-| RSLV-01 | Phase 3 | Pending |
-| RSLV-02 | Phase 3 | Pending |
-| RSLV-03 | Phase 3 | Pending |
-| RSLV-04 | Phase 3 | Pending |
-| RSLV-05 | Phase 3 | Pending |
+| RSLV-01 | Phase 3 | Complete |
+| RSLV-02 | Phase 3 | Complete |
+| RSLV-03 | Phase 3 | Complete |
+| RSLV-04 | Phase 3 | Complete |
+| RSLV-05 | Phase 3 | Complete |
 | TOKN-01 | Phase 1 | Complete |
 | TOKN-02 | Phase 1 | Complete |
 | TOKN-03 | Phase 1 | Complete |
