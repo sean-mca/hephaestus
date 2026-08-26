@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: HTTP Serving and Observability** - Deployable HTTP service with health probes, metrics, logging, and tracing (completed 2026-08-24)
 - [x] **Phase 3: Model Resolution** - Self-building S3 cache with HuggingFace fallback and cache-back (completed 2026-08-26)
 - [x] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching (completed 2026-08-26)
-- [ ] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format
+- [x] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format (completed 2026-08-26)
 
 ## Phase Details
 
@@ -149,12 +149,12 @@ Plans:
   3. Forge validates converted ONNX model integrity before uploading, rejecting corrupt conversions
   4. End-to-end: Hephaestus pod starts with a model that has no ONNX export, Forge converts it, and inference succeeds on the converted model
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 **Wave 1** *(parallel — no file overlap)*
 
 - [x] 05-01-PLAN.md — Forge conversion service: Python FastAPI app with optimum conversion, validation, S3 upload, queue, tests, and Dockerfile
-- [ ] 05-02-PLAN.md — Rust ForgeClient integration: HttpForgeClient with reqwest, ModelResolver generalization, binary wiring
+- [x] 05-02-PLAN.md — Rust ForgeClient integration: HttpForgeClient with reqwest, ModelResolver generalization, binary wiring
 
 ## Progress
 
@@ -167,4 +167,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. HTTP Serving and Observability | 4/4 | Complete   | 2026-08-24 |
 | 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
 | 4. Additional Profiles and Dynamic Batching | 4/4 | Complete   | 2026-08-26 |
-| 5. Forge Conversion Service | 1/2 | In Progress|  |
+| 5. Forge Conversion Service | 2/2 | Complete   | 2026-08-26 |
