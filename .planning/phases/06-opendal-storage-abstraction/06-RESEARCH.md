@@ -464,17 +464,19 @@ data = op.read("prefix/org/model/model.onnx")
 | A5 | OpenDAL Python `Operator` is synchronous and safe to call from `asyncio.to_thread()` | Pitfall 4 | If it's async-only, Forge queue.py needs restructuring. |
 | A6 | The `root` config for fs backend creates the directory if it doesn't exist | Architecture Patterns | If not, need explicit `create_dir_all` before first write with fs backend. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **How does OpenDAL's `root` interact with `STORAGE_PREFIX` for S3?**
    - What we know: OpenDAL's `root` config key prefixes all paths. S3's `root` would make all keys relative to that root path.
    - What's unclear: Whether setting `root` to `/models` means `op.read("org/model/file.onnx")` translates to S3 key `models/org/model/file.onnx` or `/models/org/model/file.onnx`.
    - Recommendation: Write a quick integration test against the memory backend to verify path behavior. If `root` adds a leading slash, strip it.
+   - **RESOLVED:** Plan 06-02, Task 2 defines the mapping: for S3/GCS/Azure backends, `STORAGE_PREFIX` maps to OpenDAL `root` as `"/{prefix}"`. For fs backend, `STORAGE_ROOT` is the base `root` and `STORAGE_PREFIX` is appended as a subdirectory (`"{storage_root}/{prefix}"`). All subsequent paths are bare (no leading slash) per Pitfall 2.
 
 2. **Should `with_retry` in resolver.rs be removed entirely for storage operations?**
    - What we know: OpenDAL's `RetryLayer` (default feature) handles retries at the Operator level. The existing `with_retry` wrapper is generic and also used for HF downloads.
    - What's unclear: Whether `RetryLayer` covers all transient failures the way `with_retry` does (e.g., specific HTTP status codes, connection resets).
    - Recommendation: Remove `with_retry` wrapping for storage operations (RetryLayer handles them). Keep `with_retry` for HF download calls which don't go through OpenDAL.
+   - **RESOLVED:** Plan 06-01, Task 2 removes `with_retry` for storage operations — `RetryLayer::new().with_max_times(3)` is applied at Operator construction (Plan 06-02, Task 2). The `with_retry` helper is kept for HuggingFace download calls only.
 
 ## Environment Availability
 
