@@ -51,9 +51,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Dynamic Batching
 
-- [ ] **BTCH-01**: Runtime supports configurable dynamic batching — collecting requests over a short window and running as a single inference call
-- [ ] **BTCH-02**: Dynamic batching is disabled by default; enabled via configuration per deployment
-- [ ] **BTCH-03**: Batching configuration includes max batch size and max wait time
+- [x] **BTCH-01**: Runtime supports configurable dynamic batching — collecting requests over a short window and running as a single inference call
+- [x] **BTCH-02**: Dynamic batching is disabled by default; enabled via configuration per deployment
+- [x] **BTCH-03**: Batching configuration includes max batch size and max wait time
 
 ### Forge Service
 
@@ -134,9 +134,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | OBSV-01 | Phase 2 | Complete |
 | OBSV-02 | Phase 2 | Complete |
 | OBSV-03 | Phase 2 | Complete |
-| BTCH-01 | Phase 4 | Pending |
-| BTCH-02 | Phase 4 | Pending |
-| BTCH-03 | Phase 4 | Pending |
+| BTCH-01 | Phase 4 | Complete |
+| BTCH-02 | Phase 4 | Complete |
+| BTCH-03 | Phase 4 | Complete |
 | FORG-01 | Phase 5 | Pending |
 | FORG-02 | Phase 5 | Pending |
 | FORG-03 | Phase 5 | Pending |

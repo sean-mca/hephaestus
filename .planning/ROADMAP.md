@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Core Inference Engine** - Rust workspace with ONNX model loading, tokenization, and classifier inference (completed 2026-08-23)
 - [x] **Phase 2: HTTP Serving and Observability** - Deployable HTTP service with health probes, metrics, logging, and tracing (completed 2026-08-24)
 - [x] **Phase 3: Model Resolution** - Self-building S3 cache with HuggingFace fallback and cache-back (completed 2026-08-26)
-- [ ] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching
+- [x] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching (completed 2026-08-26)
 - [ ] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format
 
 ## Phase Details
@@ -118,7 +118,7 @@ Plans:
   4. User can enable dynamic batching via configuration, collecting requests over a time window for batched inference
   5. Batching is disabled by default; when enabled, max batch size and max wait time are configurable per deployment
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 **Wave 1**
 
@@ -130,7 +130,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 04-03-PLAN.md — Dynamic batching with channel-based request collection
+- [x] 04-03-PLAN.md — Dynamic batching with channel-based request collection
 
 ### Phase 5: Forge Conversion Service
 
@@ -157,5 +157,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Core Inference Engine | 3/3 | Complete    | 2026-08-23 |
 | 2. HTTP Serving and Observability | 4/4 | Complete   | 2026-08-24 |
 | 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
-| 4. Additional Profiles and Dynamic Batching | 2/3 | In Progress|  |
+| 4. Additional Profiles and Dynamic Batching | 3/3 | Complete   | 2026-08-26 |
 | 5. Forge Conversion Service | 0/0 | Not started | - |
