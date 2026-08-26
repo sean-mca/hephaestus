@@ -6,14 +6,14 @@ current_phase: 04
 current_phase_name: additional-profiles-and-dynamic-batching
 status: executing
 stopped_at: Phase 04 context gathered
-last_updated: "2026-08-26T15:41:25.904Z"
+last_updated: "2026-08-26T15:53:05.909Z"
 last_activity: 2026-08-26
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 60
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-26)
 ## Current Position
 
 Phase: 04 (additional-profiles-and-dynamic-batching) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-26 — Phase 04 execution started
 
@@ -64,6 +64,7 @@ Progress: [████████████████████] 9/9 pla
 | Phase 02 P02 | 8min | 2 tasks | 12 files |
 | Phase 02 P03 | 2min | 2 tasks | 4 files |
 | Phase 04 P01 | 8min | 2 tasks | 9 files |
+| Phase 04 P02 | 7min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Extracted shared load_session_and_tokenizer and tokenize_text helpers across pipeline types
 - [Phase ?]: PipelineKind returns serde_json::Value -- handler inserts model_id/latency_ms dynamically (D-05)
 - [Phase ?]: InferResponse struct removed; model-determined JSON output replaces fixed response type
+- [Phase ?]: Entity struct in pipeline.rs for public trait visibility
+- [Phase ?]: PreparedInput optional encoding field avoids re-tokenization
+- [Phase ?]: Seq2Seq tries i64 first, falls back to f32 with rounding
 
 ### Pending Todos
 
@@ -118,6 +122,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-26T15:40:44.753Z
+Last session: 2026-08-26T15:52:56.618Z
 Stopped at: Phase 04 context gathered
 Resume file: .planning/phases/04-additional-profiles-and-dynamic-batching/04-CONTEXT.md

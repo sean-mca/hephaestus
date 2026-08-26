@@ -118,7 +118,7 @@ Plans:
   4. User can enable dynamic batching via configuration, collecting requests over a time window for batched inference
   5. Batching is disabled by default; when enabled, max batch size and max wait time are configurable per deployment
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
 **Wave 1**
 
@@ -126,7 +126,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-02-PLAN.md — Seq2Seq and Token Classifier profiles completing all four model types
+- [x] 04-02-PLAN.md — Seq2Seq and Token Classifier profiles completing all four model types
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -157,5 +157,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Core Inference Engine | 3/3 | Complete    | 2026-08-23 |
 | 2. HTTP Serving and Observability | 4/4 | Complete   | 2026-08-24 |
 | 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
-| 4. Additional Profiles and Dynamic Batching | 1/3 | In Progress|  |
+| 4. Additional Profiles and Dynamic Batching | 2/3 | In Progress|  |
 | 5. Forge Conversion Service | 0/0 | Not started | - |

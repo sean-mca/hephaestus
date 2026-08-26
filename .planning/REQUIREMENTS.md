@@ -18,8 +18,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **PROF-01**: Classifier profile tokenizes input text, runs inference, applies softmax, and returns label + confidence score
 - [x] **PROF-02**: Embeddings profile tokenizes input text, runs inference, applies L2 normalization, and returns a float vector
-- [ ] **PROF-03**: Seq2seq profile tokenizes input text, runs inference, decodes output tokens, and returns generated text
-- [ ] **PROF-04**: Token classifier profile tokenizes input text, runs inference, and returns per-token labels (NER, POS)
+- [x] **PROF-03**: Seq2seq profile tokenizes input text, runs inference, decodes output tokens, and returns generated text
+- [x] **PROF-04**: Token classifier profile tokenizes input text, runs inference, and returns per-token labels (NER, POS)
 - [x] **PROF-05**: All profiles implement a single `Pipeline` trait with minimal interface (Ousterhout deep module pattern)
 
 ### Model Resolution
@@ -116,8 +116,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | CORE-04 | Phase 2 | Complete |
 | PROF-01 | Phase 1 | Complete |
 | PROF-02 | Phase 4 | Complete |
-| PROF-03 | Phase 4 | Pending |
-| PROF-04 | Phase 4 | Pending |
+| PROF-03 | Phase 4 | Complete |
+| PROF-04 | Phase 4 | Complete |
 | PROF-05 | Phase 1 | Complete |
 | RSLV-01 | Phase 3 | Complete |
 | RSLV-02 | Phase 3 | Complete |
