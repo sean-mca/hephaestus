@@ -26,7 +26,7 @@ Build a persistent Python service (the Forge) that converts non-ONNX HuggingFace
 
 ### Concurrent Conversion
 - **D-08:** In-memory lock per model ID. First request converts; subsequent requests for the same model_id block and wait for the first to finish, then receive the same S3 paths. Prevents duplicate work.
-- **D-09:** Single Forge replica for v1. In-memory lock is sufficient. Conversion is infrequent (only for new model deployments). Horizontal scaling deferred.
+- **D-09:** [informational] Single Forge replica for v1. In-memory lock is sufficient. Conversion is infrequent (only for new model deployments). Horizontal scaling deferred.
 - **D-10:** Sequential conversion queue — one conversion at a time. Model conversion is CPU/memory intensive; running multiple in parallel on a single pod risks OOM.
 
 ### Forge Project Structure
