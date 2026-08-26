@@ -4045,6 +4045,7 @@ dependencies = [
  "bytes",
  "http",
  "http-body",
+ "http-body-util",
  "percent-encoding",
  "pin-project-lite",
  "tokio",
