@@ -53,6 +53,18 @@ pub enum ResolveError {
         model_id: String,
     },
 
+    /// Forge conversion request failed.
+    ///
+    /// Returned when the HTTP request to the Forge service fails, returns
+    /// a non-success status, or returns an unparseable response body.
+    #[error("Forge conversion failed for model '{model_id}': {reason}")]
+    ForgeConversion {
+        /// The model ID that failed conversion.
+        model_id: String,
+        /// Human-readable reason for the failure.
+        reason: String,
+    },
+
     /// Filesystem I/O error.
     #[error("i/o error")]
     Io(#[from] std::io::Error),

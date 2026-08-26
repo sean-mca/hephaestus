@@ -76,6 +76,10 @@ pub struct Config {
     #[serde(default)]
     pub forge_url: Option<String>,
 
+    /// Forge conversion service timeout in seconds (default: 600, env `FORGE_TIMEOUT_SECS`).
+    #[serde(default = "default_forge_timeout_secs")]
+    pub forge_timeout_secs: u64,
+
     /// Optional model profile override (env `MODEL_PROFILE`, D-02).
     /// When set, takes precedence over auto-detection from config.json.
     /// Accepted values: `classifier`, `embeddings`, `seq2seq`, `token_classifier`.
@@ -124,6 +128,10 @@ fn default_batch_max_size() -> u32 {
 
 fn default_batch_max_wait_ms() -> u64 {
     50
+}
+
+fn default_forge_timeout_secs() -> u64 {
+    600
 }
 
 impl Config {
@@ -226,6 +234,7 @@ mod tests {
             s3_bucket: None,
             s3_prefix: None,
             forge_url: None,
+            forge_timeout_secs: 600,
             model_profile: None,
             batch_enabled: false,
             batch_max_size: 8,
@@ -417,6 +426,15 @@ mod tests {
 
         // Assert -- should pass because batch validation is skipped
         assert!(result.is_ok(), "validation should skip batch checks when batching disabled");
+    }
+
+    #[test]
+    fn test_forge_timeout_default() {
+        let config = config_with_model_path(None);
+        assert_eq!(
+            config.forge_timeout_secs, 600,
+            "forge_timeout_secs should default to 600"
+        );
     }
 
     #[test]

@@ -1,17 +1,46 @@
 //! Forge conversion service client.
 //!
 //! Defines the [`ForgeClient`] trait for requesting model conversion
-//! to ONNX format and the [`StubForgeClient`] stub implementation.
-//! Phase 3 ships the stub; Phase 5 provides the real HTTP client
-//! using reqwest (D-08, D-10).
+//! to ONNX format, the [`StubForgeClient`] stub implementation, and
+//! the [`HttpForgeClient`] real HTTP client using reqwest.
+
+use std::time::Duration;
+
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ResolveError;
 
+/// Response from the Forge conversion service.
+///
+/// Contains the S3 paths of the converted model files and metadata
+/// about the conversion process.
+#[derive(Deserialize, Debug)]
+pub struct ForgeResponse {
+    /// S3 paths where the converted ONNX files were uploaded.
+    pub s3_paths: Vec<String>,
+    /// Metadata about the conversion process.
+    pub metadata: ConversionMetadata,
+}
+
+/// Metadata about a Forge conversion operation.
+#[derive(Deserialize, Debug)]
+pub struct ConversionMetadata {
+    /// Model architecture (e.g., `"distilbert"`).
+    pub architecture: String,
+    /// Original model format before conversion (e.g., `"pytorch"`).
+    pub original_format: String,
+    /// Time taken for conversion in seconds.
+    pub conversion_duration_secs: f64,
+    /// Version of the `optimum` library used for conversion.
+    pub optimum_version: String,
+}
+
 /// Forge service client for converting models to ONNX format (D-10).
 ///
-/// Phase 3 ships [`StubForgeClient`] which always returns
-/// [`ResolveError::ForgeUnavailable`]. Phase 5 provides the real
-/// HTTP implementation using reqwest to POST to the Forge service.
+/// Phase 3 shipped [`StubForgeClient`] which always returns
+/// [`ResolveError::ForgeUnavailable`]. Phase 5 adds [`HttpForgeClient`]
+/// which POSTs to the Forge service via reqwest.
 ///
 /// The trait follows the Ousterhout deep module pattern with a single
 /// `convert()` method hiding all conversion complexity.
@@ -19,12 +48,12 @@ use crate::error::ResolveError;
 pub trait ForgeClient: Send + Sync {
     /// Request model conversion to ONNX format.
     ///
-    /// Returns the S3 paths of the converted model files on success,
-    /// or a [`ResolveError`] on failure.
+    /// Returns a [`ForgeResponse`] containing the S3 paths and
+    /// conversion metadata on success, or a [`ResolveError`] on failure.
     fn convert(
         &self,
         model_id: &str,
-    ) -> impl std::future::Future<Output = Result<Vec<String>, ResolveError>> + Send;
+    ) -> impl std::future::Future<Output = Result<ForgeResponse, ResolveError>> + Send;
 }
 
 /// Stub Forge client that always returns an unavailable error (D-10).
@@ -35,9 +64,81 @@ pub trait ForgeClient: Send + Sync {
 pub struct StubForgeClient;
 
 impl ForgeClient for StubForgeClient {
-    async fn convert(&self, model_id: &str) -> Result<Vec<String>, ResolveError> {
+    async fn convert(&self, model_id: &str) -> Result<ForgeResponse, ResolveError> {
         Err(ResolveError::ForgeUnavailable {
             model_id: model_id.to_string(),
+        })
+    }
+}
+
+/// JSON request body for the Forge `/convert` endpoint.
+#[derive(Serialize)]
+struct ConvertRequest {
+    model_id: String,
+}
+
+/// HTTP client for the Forge conversion service.
+///
+/// Sends POST requests to `{base_url}/convert` with a JSON body
+/// containing the model ID. The response is deserialized into a
+/// [`ForgeResponse`] with S3 paths and conversion metadata.
+///
+/// Configured with a timeout from `FORGE_TIMEOUT_SECS` (default 600s,
+/// per D-04) to prevent unbounded blocking on long conversions.
+pub struct HttpForgeClient {
+    client: Client,
+    base_url: String,
+}
+
+impl HttpForgeClient {
+    /// Create a new HTTP Forge client.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_url` - Base URL of the Forge service (e.g., `"http://forge:8080"`).
+    ///   Trailing slashes are trimmed.
+    /// * `timeout_secs` - Request timeout in seconds (T-05-R02).
+    pub fn new(base_url: &str, timeout_secs: u64) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(timeout_secs))
+            .build()
+            .expect("failed to build reqwest client");
+
+        Self {
+            client,
+            base_url: base_url.trim_end_matches('/').to_string(),
+        }
+    }
+}
+
+impl ForgeClient for HttpForgeClient {
+    async fn convert(&self, model_id: &str) -> Result<ForgeResponse, ResolveError> {
+        let url = format!("{}/convert", self.base_url);
+        let body = ConvertRequest {
+            model_id: model_id.to_string(),
+        };
+
+        let response = self.client.post(&url).json(&body).send().await.map_err(
+            |e| ResolveError::ForgeConversion {
+                model_id: model_id.to_string(),
+                reason: e.to_string(),
+            },
+        )?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body_text = response.text().await.unwrap_or_default();
+            return Err(ResolveError::ForgeConversion {
+                model_id: model_id.to_string(),
+                reason: format!("HTTP {status}: {body_text}"),
+            });
+        }
+
+        response.json::<ForgeResponse>().await.map_err(|e| {
+            ResolveError::ForgeConversion {
+                model_id: model_id.to_string(),
+                reason: format!("invalid response: {e}"),
+            }
         })
     }
 }
@@ -95,5 +196,37 @@ mod tests {
         // should remain minimal.
         fn _assert_forge_client_impl<T: ForgeClient>() {}
         _assert_forge_client_impl::<StubForgeClient>();
+    }
+
+    #[test]
+    fn http_forge_client_stores_base_url() {
+        let client = HttpForgeClient::new("http://forge:8080", 600);
+        assert_eq!(client.base_url, "http://forge:8080");
+    }
+
+    #[test]
+    fn http_forge_client_trims_trailing_slash() {
+        let client = HttpForgeClient::new("http://forge:8080/", 600);
+        assert_eq!(client.base_url, "http://forge:8080");
+    }
+
+    #[test]
+    fn forge_response_deserializes_from_json() {
+        let json = r#"{
+            "s3_paths": ["s3://bucket/models/org/model/model.onnx", "s3://bucket/models/org/model/tokenizer.json"],
+            "metadata": {
+                "architecture": "distilbert",
+                "original_format": "pytorch",
+                "conversion_duration_secs": 42.5,
+                "optimum_version": "1.17.0"
+            }
+        }"#;
+
+        let resp: ForgeResponse = serde_json::from_str(json).expect("should deserialize");
+        assert_eq!(resp.s3_paths.len(), 2);
+        assert_eq!(resp.metadata.architecture, "distilbert");
+        assert_eq!(resp.metadata.original_format, "pytorch");
+        assert!((resp.metadata.conversion_duration_secs - 42.5).abs() < f64::EPSILON);
+        assert_eq!(resp.metadata.optimum_version, "1.17.0");
     }
 }
