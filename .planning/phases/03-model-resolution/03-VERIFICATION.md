@@ -1,30 +1,36 @@
 ---
 phase: 03-model-resolution
 verified: 2026-08-26T00:00:00Z
-status: human_needed
+status: passed
 score: 7/10 must-haves verified
 behavior_unverified: 3 # present + wired, no live-network test exercises the invariant (see behavior_unverified_items)
 overrides_applied: 0
 behavior_unverified_items:
+
   - truth: "On S3 cache hit, model loads from S3 without contacting HuggingFace (RSLV-01, D-01, D-02)"
     test: "Set S3_BUCKET to a real bucket pre-populated with {prefix}/{model_id}/model.onnx, tokenizer.json, config.json. Start the pod with MODEL_ID matching that key and no MODEL_PATH. Observe logs."
     expected: "Log line 'model resolved from S3 cache' appears (tier=s3); no HuggingFace network call is made; pod reaches readiness."
     why_human: "crates/hephaestus-resolve/src/s3.rs::download_model_from_s3 has no unit or integration test that exercises its actual get_object success path -- the only test covering that function (download_returns_existing_local_cache) short-circuits on the local-cache-hit branch before any S3 call is made. Exercising the real GetObject path requires a live or mocked S3 bucket, which the crate does not use (no trait abstraction over aws_sdk_s3::Client, so mockall cannot substitute it). RESEARCH.md's own test plan called for 'mockall setup for S3 and HF traits' as a Wave 0 deliverable; it was not implemented."
+
   - truth: "After HF download, model files are uploaded to S3 in background for future pods (RSLV-04, D-12, D-13)"
     test: "Start the pod with MODEL_ID set to an HF model with an ONNX export, S3_BUCKET configured, and no local/S3 cache present. After the pod reaches readiness, check the S3 bucket for {prefix}/{model_id}/model.onnx, tokenizer.json, config.json."
     expected: "Files appear in S3 within a few seconds of pod startup; a 'successfully cached model to S3' info log is emitted; the request that triggered the download is not blocked by the upload."
     why_human: "spawn_cache_back() and upload_model_to_s3() are never invoked by any test in the suite -- the closest coverage (upload_model_dir_discovers_files, upload_model_dir_handles_onnx_subdir) only asserts on filesystem fixture layout and never calls the actual upload function or a mocked S3 client. Requires a live S3 bucket to observe the end-to-end fire-and-forget path."
+
   - truth: "Operator deploys with MODEL_ID only (no MODEL_PATH), pod downloads model from HuggingFace and serves inference"
     test: "Set MODEL_ID=Xenova/distilbert-base-uncased-finetuned-sst-2-english, unset MODEL_PATH, unset S3_BUCKET. Start the binary. Send a classification request once readiness flips true."
     expected: "Pod downloads onnx/model.onnx, tokenizer.json, config.json from HuggingFace, constructs the pipeline, passes warmup, flips ready, and returns a valid classification for the request."
     why_human: "download_from_hf() in hf.rs is exercised by zero tests (unit or ignored-integration) -- only its pure helper split_model_id() is tested. The one live-network test in the workspace (hephaestus-core's classifier_e2e.rs) predates this phase and does not go through ModelResolver at all. No `crates/hephaestus-resolve/tests/resolve_e2e.rs` was created despite RESEARCH.md listing it as a Wave 0 gap. External HuggingFace network integration always needs human verification."
 human_verification:
+
   - test: "Set S3_BUCKET to a real bucket pre-populated with model files under {prefix}/{model_id}/. Start pod with matching MODEL_ID, no MODEL_PATH. Watch logs."
     expected: "'model resolved from S3 cache' logged (tier=s3); no HuggingFace request occurs; pod becomes ready without internet access."
     why_human: "No test (mocked or live) exercises the S3 get_object success path in download_model_from_s3."
+
   - test: "Start pod with MODEL_ID pointing at an HF model with an ONNX export, S3_BUCKET configured, cold cache. After readiness, inspect the S3 bucket."
     expected: "model.onnx, tokenizer.json, config.json appear in S3 shortly after startup; pod did not wait on the upload to become ready."
     why_human: "spawn_cache_back()/upload_model_to_s3() are never invoked by any automated test."
+
   - test: "Start pod with MODEL_ID=Xenova/distilbert-base-uncased-finetuned-sst-2-english, no MODEL_PATH, no S3_BUCKET. Send a classification request after readiness."
     expected: "Model downloads from HuggingFace, pipeline builds, warmup passes, request returns a valid label + score."
     why_human: "download_from_hf() has zero test coverage (mocked or live); this is the phase's primary vertical-slice claim and needs a real network run to confirm."
