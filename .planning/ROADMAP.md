@@ -149,7 +149,12 @@ Plans:
   3. Forge validates converted ONNX model integrity before uploading, rejecting corrupt conversions
   4. End-to-end: Hephaestus pod starts with a model that has no ONNX export, Forge converts it, and inference succeeds on the converted model
 
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+**Wave 1** *(parallel — no file overlap)*
+
+- [ ] 05-01-PLAN.md — Forge conversion service: Python FastAPI app with optimum conversion, validation, S3 upload, queue, tests, and Dockerfile
+- [ ] 05-02-PLAN.md — Rust ForgeClient integration: HttpForgeClient with reqwest, ModelResolver generalization, binary wiring
 
 ## Progress
 
