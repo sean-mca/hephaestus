@@ -47,10 +47,14 @@ class ConversionQueue:
             async with self._semaphore:
                 output_dir = tempfile.mkdtemp(prefix="forge-")
                 try:
-                    result = await asyncio.wait_for(
-                        self._do_convert(model_id, output_dir, settings),
-                        timeout=settings.conversion_timeout_secs,
-                    )
+                    # Let the conversion run to completion.
+                    # Timeout enforcement moves to the HTTP client (Hephaestus
+                    # HttpForgeClient already has FORGE_TIMEOUT_SECS).
+                    # asyncio.wait_for cannot actually cancel thread pool work
+                    # started by asyncio.to_thread -- the thread keeps running
+                    # after cancellation, violating the D-10 one-at-a-time
+                    # guarantee and risking OOM from concurrent conversions.
+                    result = await self._do_convert(model_id, output_dir, settings)
                     self._results[model_id] = result
                     return result
                 except Exception:
