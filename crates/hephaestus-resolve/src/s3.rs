@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use aws_sdk_s3::Client as S3Client;
+use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::primitives::ByteStream;
 
 use crate::error::ResolveError;
@@ -213,9 +214,8 @@ async fn download_s3_file(
         .send()
         .await
         .map_err(|e| {
-            let msg = e.to_string();
-            // Preserve NoSuchKey detection for the caller.
-            if msg.contains("NoSuchKey") || msg.contains("not found") || msg.contains("404") {
+            // Use typed error matching instead of fragile string matching.
+            if matches!(e.as_service_error(), Some(GetObjectError::NoSuchKey(_))) {
                 ResolveError::S3(format!("NoSuchKey: {key}"))
             } else {
                 ResolveError::S3(format!("get_object failed for {key}: {e}"))
