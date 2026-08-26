@@ -61,15 +61,31 @@ pub struct Config {
     #[serde(default)]
     pub otel_exporter_otlp_endpoint: Option<String>,
 
-    /// S3 bucket for model cache (optional, env `S3_BUCKET`, D-03).
-    /// When set, the resolver checks S3 before HuggingFace.
-    #[serde(default)]
-    pub s3_bucket: Option<String>,
+    /// Storage backend type (env `STORAGE_TYPE`).
+    /// Accepted values: `s3`, `fs`, `gcs`, `azblob`, `none`.
+    /// Defaults to `"s3"` when unset (D-02).
+    /// `none` disables the storage tier entirely (D-05).
+    #[serde(default = "default_storage_type")]
+    pub storage_type: String,
 
-    /// S3 key prefix for model files (optional, env `S3_PREFIX`).
-    /// Prepended to model ID when constructing S3 keys.
+    /// Storage bucket name (env `STORAGE_BUCKET`).
+    /// Required for S3, GCS, and Azure backends.
     #[serde(default)]
-    pub s3_prefix: Option<String>,
+    pub storage_bucket: Option<String>,
+
+    /// Universal path prefix across all backends (env `STORAGE_PREFIX`, D-04).
+    /// On S3 becomes a key prefix, on filesystem becomes a subdirectory.
+    #[serde(default)]
+    pub storage_prefix: Option<String>,
+
+    /// Root directory for filesystem backend (env `STORAGE_ROOT`, D-15).
+    /// Required when `STORAGE_TYPE=fs` (D-17).
+    #[serde(default)]
+    pub storage_root: Option<String>,
+
+    /// Cloud region for S3/GCS backends (env `STORAGE_REGION`).
+    #[serde(default)]
+    pub storage_region: Option<String>,
 
     /// Forge conversion service URL (optional, env `FORGE_URL`, D-09).
     /// When set, enables the Forge conversion tier for models without ONNX exports.
@@ -100,6 +116,10 @@ pub struct Config {
     /// Defaults to 50ms.
     #[serde(default = "default_batch_max_wait_ms")]
     pub batch_max_wait_ms: u64,
+}
+
+fn default_storage_type() -> String {
+    "s3".to_string()
 }
 
 fn default_ep() -> String {
@@ -193,6 +213,20 @@ impl Config {
     ///
     /// Returns an error if any configuration value is out of range.
     pub fn validate(&self) -> Result<(), anyhow::Error> {
+        // T-06-05: validate storage_type against explicit allowlist.
+        const ALLOWED_STORAGE_TYPES: &[&str] = &["s3", "fs", "gcs", "azblob", "none"];
+        if !ALLOWED_STORAGE_TYPES.contains(&self.storage_type.as_str()) {
+            bail!(
+                "invalid STORAGE_TYPE '{}' -- accepted values: s3, fs, gcs, azblob, none",
+                self.storage_type,
+            );
+        }
+
+        // D-17: STORAGE_ROOT is required when STORAGE_TYPE=fs.
+        if self.storage_type == "fs" && self.storage_root.is_none() {
+            bail!("STORAGE_ROOT is required when STORAGE_TYPE=fs");
+        }
+
         if self.batch_enabled {
             if self.batch_max_size < 1 || self.batch_max_size > 64 {
                 bail!(
@@ -231,8 +265,11 @@ mod tests {
             request_timeout_secs: 30,
             shutdown_timeout_secs: 30,
             otel_exporter_otlp_endpoint: None,
-            s3_bucket: None,
-            s3_prefix: None,
+            storage_type: "s3".to_string(),
+            storage_bucket: None,
+            storage_prefix: None,
+            storage_root: None,
+            storage_region: None,
             forge_url: None,
             forge_timeout_secs: 600,
             model_profile: None,
@@ -451,5 +488,69 @@ mod tests {
 
         // Assert
         assert!(result.is_err(), "batch_max_wait_ms exceeding timeout should be rejected");
+    }
+
+    // --- Storage config tests ---
+
+    #[test]
+    fn test_storage_type_defaults_to_s3() {
+        let config = config_with_model_path(None);
+        assert_eq!(config.storage_type, "s3", "storage_type should default to s3");
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_storage_type() {
+        let mut config = config_with_model_path(None);
+        config.storage_type = "invalid".to_string();
+
+        let result = config.validate();
+
+        assert!(result.is_err(), "invalid storage_type should be rejected");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("accepted values"),
+            "error should list accepted values: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_accepts_all_storage_types() {
+        for st in &["s3", "fs", "gcs", "azblob", "none"] {
+            let mut config = config_with_model_path(None);
+            config.storage_type = st.to_string();
+            // fs requires storage_root (D-17)
+            if *st == "fs" {
+                config.storage_root = Some("/data/models".to_string());
+            }
+            let result = config.validate();
+            assert!(result.is_ok(), "storage_type={st} should be accepted, got: {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_validate_rejects_fs_without_root() {
+        let mut config = config_with_model_path(None);
+        config.storage_type = "fs".to_string();
+        config.storage_root = None;
+
+        let result = config.validate();
+
+        assert!(result.is_err(), "fs without storage_root should be rejected");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("STORAGE_ROOT"),
+            "error should mention STORAGE_ROOT: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_accepts_fs_with_root() {
+        let mut config = config_with_model_path(None);
+        config.storage_type = "fs".to_string();
+        config.storage_root = Some("/data/models".to_string());
+
+        let result = config.validate();
+
+        assert!(result.is_ok(), "fs with storage_root should be accepted");
     }
 }
