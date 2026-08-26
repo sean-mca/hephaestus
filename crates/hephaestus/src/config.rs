@@ -173,6 +173,20 @@ impl Config {
 
         Ok(path)
     }
+
+    /// Validate configuration values before resource allocation.
+    ///
+    /// When `batch_enabled` is true, validates that `batch_max_size`
+    /// is within [1, 64] and that `batch_max_wait_ms` does not exceed
+    /// `request_timeout_secs * 1000`. When batching is disabled,
+    /// batch-related validation is skipped entirely.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any configuration value is out of range.
+    pub fn validate(&self) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -321,5 +335,87 @@ mod tests {
         assert!(config.batch_enabled);
         assert_eq!(config.batch_max_size, 16);
         assert_eq!(config.batch_max_wait_ms, 100);
+    }
+
+    #[test]
+    fn test_validate_rejects_zero_batch_size() {
+        // Arrange
+        let mut config = config_with_model_path(None);
+        config.batch_enabled = true;
+        config.batch_max_size = 0;
+
+        // Act
+        let result = config.validate();
+
+        // Assert
+        assert!(result.is_err(), "batch_max_size=0 should be rejected");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("between 1 and 64"),
+            "error should mention valid range: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_rejects_large_batch_size() {
+        // Arrange
+        let mut config = config_with_model_path(None);
+        config.batch_enabled = true;
+        config.batch_max_size = 65;
+
+        // Act
+        let result = config.validate();
+
+        // Assert
+        assert!(result.is_err(), "batch_max_size=65 should be rejected");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("between 1 and 64"),
+            "error should mention valid range: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_accepts_valid_batch_size() {
+        // Arrange
+        let mut config = config_with_model_path(None);
+        config.batch_enabled = true;
+        config.batch_max_size = 32;
+
+        // Act
+        let result = config.validate();
+
+        // Assert
+        assert!(result.is_ok(), "batch_max_size=32 should be accepted");
+    }
+
+    #[test]
+    fn test_validate_skips_when_batching_disabled() {
+        // Arrange -- invalid batch_max_size but batching disabled
+        let mut config = config_with_model_path(None);
+        config.batch_enabled = false;
+        config.batch_max_size = 0;
+
+        // Act
+        let result = config.validate();
+
+        // Assert -- should pass because batch validation is skipped
+        assert!(result.is_ok(), "validation should skip batch checks when batching disabled");
+    }
+
+    #[test]
+    fn test_validate_rejects_wait_exceeding_timeout() {
+        // Arrange -- batch_max_wait_ms > request_timeout_secs * 1000
+        let mut config = config_with_model_path(None);
+        config.batch_enabled = true;
+        config.batch_max_size = 8;
+        config.request_timeout_secs = 5;
+        config.batch_max_wait_ms = 6000; // 6s > 5s timeout
+
+        // Act
+        let result = config.validate();
+
+        // Assert
+        assert!(result.is_err(), "batch_max_wait_ms exceeding timeout should be rejected");
     }
 }

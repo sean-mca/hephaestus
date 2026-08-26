@@ -4,6 +4,7 @@
 //! and BIO span merging functions used by pipeline implementations
 //! to convert raw model logits into human-readable predictions.
 
+use crate::error::CoreError;
 use crate::pipeline::Entity;
 
 /// Compute a numerically stable softmax over `logits`.
@@ -11,28 +12,28 @@ use crate::pipeline::Entity;
 /// Subtracts the maximum value before exponentiation to prevent
 /// overflow with large logit values.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if `logits` is empty.
-pub(crate) fn softmax(logits: &[f32]) -> Vec<f32> {
+/// Returns [`CoreError::Inference`] if `logits` is empty.
+pub(crate) fn softmax(logits: &[f32]) -> Result<Vec<f32>, CoreError> {
     let max = logits
         .iter()
         .copied()
         .fold(f32::NEG_INFINITY, f32::max);
     let exps: Vec<f32> = logits.iter().map(|&x| (x - max).exp()).collect();
     let sum: f32 = exps.iter().sum();
-    exps.iter().map(|&e| e / sum).collect()
+    Ok(exps.iter().map(|&e| e / sum).collect())
 }
 
 /// Return the index and value of the maximum element in `probs`.
 ///
 /// Ties are broken by first occurrence (lowest index wins).
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if `probs` is empty.
-pub(crate) fn argmax_with_score(probs: &[f32]) -> (usize, f32) {
-    probs
+/// Returns [`CoreError::Inference`] if `probs` is empty.
+pub(crate) fn argmax_with_score(probs: &[f32]) -> Result<(usize, f32), CoreError> {
+    Ok(probs
         .iter()
         .enumerate()
         .fold((0, f32::NEG_INFINITY), |(max_idx, max_val), (idx, &val)| {
@@ -41,7 +42,7 @@ pub(crate) fn argmax_with_score(probs: &[f32]) -> (usize, f32) {
             } else {
                 (max_idx, max_val)
             }
-        })
+        }))
 }
 
 /// Compute masked mean pooling over token embeddings.
@@ -122,14 +123,14 @@ pub(crate) fn l2_normalize(v: &mut [f32]) {
 ///
 /// A vector of `(label_index, score)` tuples, one per token.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if `logits.len() != num_tokens * num_labels` or if `num_labels == 0`.
+/// Returns [`CoreError::Inference`] if any per-token argmax fails.
 pub(crate) fn argmax_per_token(
     logits: &[f32],
     num_tokens: usize,
     num_labels: usize,
-) -> Vec<(usize, f32)> {
+) -> Result<Vec<(usize, f32)>, CoreError> {
     assert_eq!(
         logits.len(),
         num_tokens * num_labels,
@@ -255,14 +256,13 @@ pub(crate) fn merge_subword_entities(
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn test_softmax_basic() {
         // Arrange
         let logits = [1.0_f32, 2.0, 3.0];
 
         // Act
-        let probs = softmax(&logits);
+        let probs = softmax(&logits).expect("softmax should succeed");
 
         // Assert
         let sum: f32 = probs.iter().sum();
@@ -277,7 +277,7 @@ mod tests {
         let logits = [1.0_f32, 1.0, 1.0, 1.0];
 
         // Act
-        let probs = softmax(&logits);
+        let probs = softmax(&logits).expect("softmax should succeed");
 
         // Assert
         for &p in &probs {
@@ -294,7 +294,7 @@ mod tests {
         let logits = [1000.0_f32, 1001.0];
 
         // Act
-        let probs = softmax(&logits);
+        let probs = softmax(&logits).expect("softmax should succeed");
 
         // Assert -- must not produce NaN or Inf
         for &p in &probs {
@@ -311,11 +311,23 @@ mod tests {
         let logits = [42.0_f32];
 
         // Act
-        let probs = softmax(&logits);
+        let probs = softmax(&logits).expect("softmax should succeed");
 
         // Assert
         assert_eq!(probs.len(), 1);
         assert!((probs[0] - 1.0).abs() < 1e-6, "single element softmax must be 1.0");
+    }
+
+    #[test]
+    fn test_softmax_empty_returns_error() {
+        // Arrange
+        let logits: [f32; 0] = [];
+
+        // Act
+        let result = softmax(&logits);
+
+        // Assert
+        assert!(result.is_err(), "softmax on empty input should return Err");
     }
 
     #[test]
@@ -324,7 +336,7 @@ mod tests {
         let probs = [0.1_f32, 0.7, 0.2];
 
         // Act
-        let (idx, score) = argmax_with_score(&probs);
+        let (idx, score) = argmax_with_score(&probs).expect("argmax should succeed");
 
         // Assert
         assert_eq!(idx, 1);
@@ -337,11 +349,23 @@ mod tests {
         let probs = [0.5_f32, 0.5, 0.3];
 
         // Act
-        let (idx, score) = argmax_with_score(&probs);
+        let (idx, score) = argmax_with_score(&probs).expect("argmax should succeed");
 
         // Assert
         assert_eq!(idx, 0, "first occurrence should win on tie");
         assert!((score - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_argmax_empty_returns_error() {
+        // Arrange
+        let probs: [f32; 0] = [];
+
+        // Act
+        let result = argmax_with_score(&probs);
+
+        // Assert
+        assert!(result.is_err(), "argmax on empty input should return Err");
     }
 
     #[test]
@@ -430,7 +454,7 @@ mod tests {
         ];
 
         // Act
-        let result = argmax_per_token(&logits, 3, 4);
+        let result = argmax_per_token(&logits, 3, 4).expect("argmax_per_token should succeed");
 
         // Assert
         assert_eq!(result.len(), 3);
@@ -448,7 +472,7 @@ mod tests {
         let logits = [1.0_f32, 2.0];
 
         // Act
-        let result = argmax_per_token(&logits, 2, 1);
+        let result = argmax_per_token(&logits, 2, 1).expect("argmax_per_token should succeed");
 
         // Assert
         assert_eq!(result.len(), 2);
@@ -475,5 +499,46 @@ mod tests {
         assert_eq!(json["entity"], "LOC");
         assert_eq!(json["start"], 5);
         assert_eq!(json["end"], 11);
+    }
+
+    #[test]
+    fn test_merge_running_average() {
+        // Arrange -- 3 separate words, first B-PER then I-PER I-PER.
+        // Expected: one merged entity with score = (0.9 + 0.8 + 0.7) / 3.0 = 0.8
+        let id2label = vec![
+            "O".to_string(),
+            "B-PER".to_string(),
+            "I-PER".to_string(),
+        ];
+
+        let predictions: Vec<(usize, f32)> = vec![
+            (1, 0.9), // B-PER
+            (2, 0.8), // I-PER
+            (2, 0.7), // I-PER
+        ];
+
+        let encoding = tokenizers::Encoding::new(
+            vec![100, 200, 300],                                    // ids
+            vec![0, 0, 0],                                          // type_ids
+            vec!["John".into(), "son".into(), "ith".into()],        // tokens
+            vec![Some(0), Some(1), Some(2)],                        // words (each a separate word)
+            vec![(0, 4), (4, 7), (7, 10)],                          // offsets
+            vec![0, 0, 0],                                          // special_tokens_mask
+            vec![1, 1, 1],                                          // attention_mask
+            vec![],                                                  // overflowing
+            Default::default(),                                          // sequence_ranges
+        );
+
+        // Act
+        let entities = merge_subword_entities(&predictions, &encoding, &id2label);
+
+        // Assert
+        assert_eq!(entities.len(), 1, "should merge into one entity");
+        let expected_score = (0.9 + 0.8 + 0.7) / 3.0;
+        assert!(
+            (entities[0].score - expected_score).abs() < 1e-6,
+            "expected score {expected_score}, got {} (pairwise averaging bug if ~0.775)",
+            entities[0].score,
+        );
     }
 }

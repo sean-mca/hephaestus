@@ -300,10 +300,10 @@ impl Pipeline for ClassifierPipeline {
         let (_, logits_data) = logits;
 
         // Apply softmax.
-        let probs = postprocess::softmax(logits_data);
+        let probs = postprocess::softmax(logits_data)?;
 
         // Get top prediction.
-        let (idx, score) = postprocess::argmax_with_score(&probs);
+        let (idx, score) = postprocess::argmax_with_score(&probs)?;
 
         // Map index to label.
         let label = self
@@ -561,7 +561,7 @@ impl Pipeline for TokenClassifierPipeline {
         };
 
         // Per-token argmax to get predicted label indices and scores.
-        let predictions = postprocess::argmax_per_token(data, num_tokens, num_labels);
+        let predictions = postprocess::argmax_per_token(data, num_tokens, num_labels)?;
 
         // Merge subword tokens into word-level entity spans.
         let mut entities =
@@ -838,8 +838,8 @@ fn batch_postprocess_classifier(
     (0..batch_size)
         .map(|i| {
             let sample_logits = &data[i * num_labels..(i + 1) * num_labels];
-            let probs = postprocess::softmax(sample_logits);
-            let (idx, score) = postprocess::argmax_with_score(&probs);
+            let probs = postprocess::softmax(sample_logits)?;
+            let (idx, score) = postprocess::argmax_with_score(&probs)?;
             let label = id2label.get(idx).cloned().unwrap_or_default();
             Ok(serde_json::json!({ "label": label, "score": score }))
         })
@@ -967,7 +967,7 @@ fn batch_postprocess_token_classifier(
             let num_tokens = prepared.sequence_length;
             let sample_start = i * max_seq_len * num_labels;
             let sample_data = &data[sample_start..sample_start + num_tokens * num_labels];
-            let predictions = postprocess::argmax_per_token(sample_data, num_tokens, num_labels);
+            let predictions = postprocess::argmax_per_token(sample_data, num_tokens, num_labels)?;
 
             let encoding = match &prepared.encoding {
                 Some(enc) => enc,
