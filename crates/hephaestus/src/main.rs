@@ -7,6 +7,7 @@
 
 mod config;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -38,7 +39,9 @@ async fn main() -> Result<(), anyhow::Error> {
         port = config.port,
         request_timeout_secs = config.request_timeout_secs,
         shutdown_timeout_secs = config.shutdown_timeout_secs,
-        s3_bucket = ?config.s3_bucket,
+        storage_type = %config.storage_type,
+        storage_bucket = ?config.storage_bucket,
+        storage_prefix = ?config.storage_prefix,
         forge_url = ?config.forge_url,
         forge_timeout_secs = config.forge_timeout_secs,
         model_profile = ?config.model_profile,
@@ -49,12 +52,44 @@ async fn main() -> Result<(), anyhow::Error> {
     let metrics_handle = hephaestus_api::install_recorder()?;
     tracing::info!("prometheus metrics recorder installed");
 
+    // 2c. Build OpenDAL storage operator from config (D-01, D-02, D-05).
+    let operator = if config.storage_type == "none" {
+        None
+    } else {
+        let mut cfg = HashMap::new();
+        if let Some(ref bucket) = config.storage_bucket {
+            cfg.insert("bucket".to_string(), bucket.clone());
+        }
+        if let Some(ref region) = config.storage_region {
+            cfg.insert("region".to_string(), region.clone());
+        }
+        // D-04: STORAGE_PREFIX/STORAGE_ROOT -> OpenDAL "root" config.
+        // For fs: root is STORAGE_ROOT, optionally joined with STORAGE_PREFIX.
+        // For cloud backends: STORAGE_PREFIX becomes "/{prefix}" root.
+        if config.storage_type == "fs" {
+            // validate() ensures storage_root is Some for fs.
+            let root = config.storage_root.as_deref().unwrap();
+            match config.storage_prefix.as_deref() {
+                Some(prefix) => cfg.insert("root".to_string(), format!("{root}/{prefix}")),
+                None => cfg.insert("root".to_string(), root.to_string()),
+            };
+        } else if let Some(ref prefix) = config.storage_prefix {
+            cfg.insert("root".to_string(), format!("/{prefix}"));
+        }
+
+        let op = opendal::Operator::via_iter(config.storage_type.as_str(), cfg.into_iter())
+            .context("failed to build storage operator")?
+            .layer(opendal::layers::RetryLayer::new().with_max_times(3));
+        Some(op)
+    };
+    tracing::info!(storage_type = %config.storage_type, "storage operator constructed");
+
     // 3. Resolve model directory: local override (MODEL_PATH) or automatic resolution.
     let model_dir = if config.model_path.is_some() {
         // Local path override -- preserves backward compatibility.
         config.model_dir()?
     } else {
-        // Automatic resolution: S3 cache -> HuggingFace -> Forge (RSLV-05).
+        // Automatic resolution: storage cache -> HuggingFace -> Forge (RSLV-05).
         // When FORGE_URL is set, use HttpForgeClient; otherwise StubForgeClient.
         // The two branches produce different generic types, so we resolve
         // inside each branch and return the PathBuf.
@@ -62,8 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let forge_client = HttpForgeClient::new(forge_url, config.forge_timeout_secs)
                 .context("failed to create Forge HTTP client")?;
             let resolver = ModelResolver::new_with_client(
-                config.s3_bucket.as_deref(),
-                config.s3_prefix.as_deref(),
+                operator.clone(),
                 forge_client,
             )
             .await
@@ -75,8 +109,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 .context("failed to resolve model")?
         } else {
             let resolver = ModelResolver::new_with_stub(
-                config.s3_bucket.as_deref(),
-                config.s3_prefix.as_deref(),
+                operator.clone(),
             )
             .await
             .context("failed to construct model resolver")?;

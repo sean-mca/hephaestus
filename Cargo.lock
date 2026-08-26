@@ -1243,6 +1243,7 @@ dependencies = [
  "hephaestus-api",
  "hephaestus-core",
  "hephaestus-resolve",
+ "opendal",
  "serde",
  "serde_json",
  "tempfile",
