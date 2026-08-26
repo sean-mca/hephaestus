@@ -10,8 +10,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use hephaestus_core::Pipeline;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::error::ApiError;
 use crate::metrics::StageTimer;
@@ -20,27 +19,18 @@ use crate::state::AppState;
 /// JSON request body for the inference endpoint (D-01).
 #[derive(Debug, Deserialize)]
 pub struct InferRequest {
-    /// The text to classify.
+    /// The text to run inference on.
     pub text: String,
 }
 
-/// JSON response body for the inference endpoint (D-02).
-#[derive(Debug, Serialize)]
-pub struct InferResponse {
-    /// The predicted label (e.g., "POSITIVE").
-    pub label: String,
-    /// The confidence score in the range [0.0, 1.0].
-    pub score: f32,
-    /// The model identifier from configuration.
-    pub model_id: String,
-    /// Request latency in milliseconds.
-    pub latency_ms: u64,
-}
-
-/// POST /infer -- run text classification inference.
+/// POST /infer -- run inference on the loaded model.
 ///
 /// Validates readiness, acquires the pipeline lock, runs tokenization
-/// and inference, and returns a JSON classification result.
+/// and inference, and returns a model-determined JSON result (D-04, D-05).
+///
+/// The response shape depends on the loaded model profile:
+/// - Classifier: `{"label": "...", "score": ..., "model_id": "...", "latency_ms": ...}`
+/// - Embeddings: `{"embedding": [...], "model_id": "...", "latency_ms": ...}`
 ///
 /// # Errors
 ///
@@ -54,7 +44,7 @@ pub struct InferResponse {
 pub async fn infer(
     State(state): State<Arc<AppState>>,
     Json(req): Json<InferRequest>,
-) -> Result<Json<InferResponse>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     // Gate on readiness (D-05).
     if !state.is_ready() {
         return Err(ApiError::NotReady);
@@ -79,7 +69,7 @@ pub async fn infer(
     })
     .await;
 
-    let output = match result {
+    let mut output = match result {
         Ok(inner) => match inner {
             Ok(output) => {
                 timer.finish_request(request_start, true);
@@ -112,6 +102,18 @@ pub async fn infer(
 
     let latency_ms = request_start.elapsed().as_millis() as u64;
 
+    // Insert model_id and latency_ms into the model-determined output (D-05).
+    if let Some(obj) = output.as_object_mut() {
+        obj.insert(
+            "model_id".to_string(),
+            serde_json::Value::String(state.model_id().to_string()),
+        );
+        obj.insert(
+            "latency_ms".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(latency_ms)),
+        );
+    }
+
     tracing::info!(
         model_id = %state.model_id(),
         latency_ms,
@@ -119,12 +121,7 @@ pub async fn infer(
         "inference request completed"
     );
 
-    Ok(Json(InferResponse {
-        label: output.label,
-        score: output.score,
-        model_id: state.model_id().to_string(),
-        latency_ms,
-    }))
+    Ok(Json(output))
 }
 
 /// GET /healthz/live -- liveness probe (D-05, D-06).
@@ -182,23 +179,55 @@ mod tests {
     }
 
     #[test]
-    fn infer_response_serializes_with_all_fields() {
-        // Arrange
-        let resp = InferResponse {
-            label: "POSITIVE".to_string(),
-            score: 0.95,
-            model_id: "test-model".to_string(),
-            latency_ms: 12,
-        };
+    fn model_determined_output_accepts_model_id_and_latency() {
+        // Arrange -- simulate what PipelineKind::execute returns
+        let mut output = serde_json::json!({
+            "label": "POSITIVE",
+            "score": 0.95,
+        });
 
-        // Act
-        let json = serde_json::to_value(&resp).expect("should serialize");
+        // Act -- insert model_id and latency_ms as the handler does
+        if let Some(obj) = output.as_object_mut() {
+            obj.insert(
+                "model_id".to_string(),
+                serde_json::Value::String("test-model".to_string()),
+            );
+            obj.insert(
+                "latency_ms".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(12_u64)),
+            );
+        }
 
         // Assert
-        assert_eq!(json["label"], "POSITIVE");
-        let score = json["score"].as_f64().expect("score should be a number");
+        assert_eq!(output["label"], "POSITIVE");
+        let score = output["score"].as_f64().expect("score should be a number");
         assert!((score - 0.95).abs() < 1e-6, "score should be ~0.95, got {score}");
-        assert_eq!(json["model_id"], "test-model");
-        assert_eq!(json["latency_ms"], 12);
+        assert_eq!(output["model_id"], "test-model");
+        assert_eq!(output["latency_ms"], 12);
+    }
+
+    #[test]
+    fn embeddings_output_accepts_model_id_and_latency() {
+        // Arrange -- simulate embeddings PipelineKind::execute output
+        let mut output = serde_json::json!({
+            "embedding": [0.1, 0.2, 0.3],
+        });
+
+        // Act
+        if let Some(obj) = output.as_object_mut() {
+            obj.insert(
+                "model_id".to_string(),
+                serde_json::Value::String("all-MiniLM-L6-v2".to_string()),
+            );
+            obj.insert(
+                "latency_ms".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(5_u64)),
+            );
+        }
+
+        // Assert
+        assert!(output["embedding"].is_array());
+        assert_eq!(output["model_id"], "all-MiniLM-L6-v2");
+        assert_eq!(output["latency_ms"], 5);
     }
 }

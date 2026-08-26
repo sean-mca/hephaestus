@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use hephaestus_core::ClassifierPipeline;
+use hephaestus_core::PipelineKind;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::Mutex;
 
@@ -15,12 +15,12 @@ use tokio::sync::Mutex;
 ///
 /// Constructed once at startup in the binary crate and shared via
 /// `Arc<AppState>` through axum's state extractor. Fields are private
-/// to enforce the Ousterhout deep-module principle — callers interact
+/// to enforce the Ousterhout deep-module principle -- callers interact
 /// through controlled accessors rather than reaching into internals.
 pub struct AppState {
-    /// The classifier inference pipeline, guarded by a tokio Mutex
-    /// because [`ClassifierPipeline::execute`] requires `&mut self`.
-    pipeline: Mutex<ClassifierPipeline>,
+    /// The inference pipeline, guarded by a tokio Mutex
+    /// because [`PipelineKind::execute`] requires `&mut self`.
+    pipeline: Mutex<PipelineKind>,
 
     /// Readiness flag. Starts `false`; flipped to `true` after the
     /// warmup inference pass succeeds (D-05). On SIGTERM, flipped
@@ -43,7 +43,7 @@ pub struct AppState {
 impl AppState {
     /// Construct new application state.
     pub fn new(
-        pipeline: ClassifierPipeline,
+        pipeline: PipelineKind,
         model_id: String,
         request_timeout: Duration,
         metrics_handle: PrometheusHandle,
@@ -89,7 +89,12 @@ impl AppState {
     }
 
     /// Acquire an exclusive lock on the inference pipeline.
-    pub async fn lock_pipeline(&self) -> tokio::sync::MutexGuard<'_, ClassifierPipeline> {
+    pub async fn lock_pipeline(&self) -> tokio::sync::MutexGuard<'_, PipelineKind> {
         self.pipeline.lock().await
+    }
+
+    /// Check whether dynamic batching is enabled (stub for Plan 03).
+    pub fn is_batching_enabled(&self) -> bool {
+        false
     }
 }

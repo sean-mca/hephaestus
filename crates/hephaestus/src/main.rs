@@ -1,8 +1,9 @@
 //! Hephaestus binary entry point.
 //!
 //! Startup sequence: load config from env vars, initialize tracing,
-//! construct the classifier pipeline, run a warmup inference pass,
-//! flip readiness, and start the HTTP server with graceful shutdown.
+//! detect model profile, construct the appropriate pipeline, run a
+//! warmup inference pass, flip readiness, and start the HTTP server
+//! with graceful shutdown.
 
 mod config;
 
@@ -11,7 +12,9 @@ use std::time::Duration;
 
 use anyhow::Context;
 use hephaestus_api::{AppState, build_router};
-use hephaestus_core::{ClassifierPipeline, Pipeline};
+use hephaestus_core::{
+    ClassifierPipeline, EmbeddingsPipeline, ModelProfile, PipelineKind, detect_profile,
+};
 use hephaestus_resolve::ModelResolver;
 
 #[tokio::main]
@@ -35,6 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
         shutdown_timeout_secs = config.shutdown_timeout_secs,
         s3_bucket = ?config.s3_bucket,
         forge_url = ?config.forge_url,
+        model_profile = ?config.model_profile,
         "configuration loaded"
     );
 
@@ -67,14 +71,47 @@ async fn main() -> Result<(), anyhow::Error> {
         "model directory resolved"
     );
 
-    // 4. Construct the classifier pipeline.
-    let pipeline = ClassifierPipeline::new(&model_dir)
-        .context("failed to construct classifier pipeline")?;
-    tracing::info!("classifier pipeline constructed");
+    // 3b. Detect model profile from config.json (D-01, D-02).
+    let config_json_path = model_dir.join("config.json");
+    let config_json_text = std::fs::read_to_string(&config_json_path)
+        .context("failed to read config.json from model directory")?;
+    let model_config: serde_json::Value = serde_json::from_str(&config_json_text)
+        .context("failed to parse config.json")?;
+    let profile = detect_profile(&model_config, config.model_profile.as_deref())
+        .context("failed to detect model profile")?;
+    tracing::info!(
+        model_id = %config.model_id,
+        profile = ?profile,
+        "model profile detected"
+    );
+
+    // 4. Construct the appropriate pipeline based on detected profile (D-03).
+    let pipeline_kind = match profile {
+        ModelProfile::Classifier => {
+            let pipeline = ClassifierPipeline::new(&model_dir)
+                .context("failed to construct classifier pipeline")?;
+            tracing::info!("classifier pipeline constructed");
+            PipelineKind::Classifier(pipeline)
+        }
+        ModelProfile::Embeddings => {
+            let pipeline = EmbeddingsPipeline::new(&model_dir)
+                .context("failed to construct embeddings pipeline")?;
+            tracing::info!("embeddings pipeline constructed");
+            PipelineKind::Embeddings(pipeline)
+        }
+        ModelProfile::Seq2Seq => {
+            anyhow::bail!("seq2seq profile is not yet implemented (coming in Plan 02)");
+        }
+        ModelProfile::TokenClassifier => {
+            anyhow::bail!(
+                "token classifier profile is not yet implemented (coming in Plan 02)"
+            );
+        }
+    };
 
     // 5. Build shared state (readiness starts false per D-05).
     let state = Arc::new(AppState::new(
-        pipeline,
+        pipeline_kind,
         config.model_id.clone(),
         Duration::from_secs(config.request_timeout_secs),
         metrics_handle,
@@ -90,12 +127,11 @@ async fn main() -> Result<(), anyhow::Error> {
         let prepared = pipeline
             .prepare(warmup_text.to_string())
             .context("warmup: failed to prepare input")?;
-        let output = pipeline
+        let _output = pipeline
             .execute(prepared)
             .context("warmup: failed to run inference")?;
         tracing::info!(
-            label = %output.label,
-            score = output.score,
+            model_id = %config.model_id,
             "warmup inference complete"
         );
     }

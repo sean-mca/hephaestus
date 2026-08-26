@@ -75,6 +75,12 @@ pub struct Config {
     /// When set, enables the Forge conversion tier for models without ONNX exports.
     #[serde(default)]
     pub forge_url: Option<String>,
+
+    /// Optional model profile override (env `MODEL_PROFILE`, D-02).
+    /// When set, takes precedence over auto-detection from config.json.
+    /// Accepted values: `classifier`, `embeddings`, `seq2seq`, `token_classifier`.
+    #[serde(default)]
+    pub model_profile: Option<String>,
 }
 
 fn default_ep() -> String {
@@ -167,6 +173,7 @@ mod tests {
             s3_bucket: None,
             s3_prefix: None,
             forge_url: None,
+            model_profile: None,
         }
     }
 
