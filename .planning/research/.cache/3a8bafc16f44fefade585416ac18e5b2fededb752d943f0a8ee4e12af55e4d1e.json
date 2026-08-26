@@ -1,0 +1,1 @@
+{"content":"envy 0.4.2: from_env::<T>() deserializes env vars into serde-derived struct. prefixed(prefix) filters by prefix. Comma-separated values into Vec. Unit enum variants supported. serde attributes like rename_all work. Error type for failures.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-08-23T02:18:56.578Z","ttl":86400000,"kind":"docs"}
