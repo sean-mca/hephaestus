@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import os
 
-from moto import mock_aws
-
 from forge.storage import upload_to_s3
 from tests.conftest import TEST_BUCKET, TEST_PREFIX
 
 
-@mock_aws
 def test_upload_to_s3_with_prefix(populated_output_dir: str, s3_mock) -> None:
     """Uploaded keys follow the {prefix}/{model_id}/{filename} layout."""
     model_id = "org/my-model"
@@ -24,7 +21,6 @@ def test_upload_to_s3_with_prefix(populated_output_dir: str, s3_mock) -> None:
     assert f"{TEST_PREFIX}/{model_id}/config.json" in keys
 
 
-@mock_aws
 def test_upload_to_s3_without_prefix(populated_output_dir: str, s3_mock) -> None:
     """When prefix is empty, keys are {model_id}/{filename}."""
     model_id = "org/my-model"
@@ -36,7 +32,6 @@ def test_upload_to_s3_without_prefix(populated_output_dir: str, s3_mock) -> None
         assert not key.startswith("/")
 
 
-@mock_aws
 def test_uploaded_files_are_retrievable(populated_output_dir: str, s3_mock) -> None:
     """Files uploaded by upload_to_s3 can be retrieved from S3."""
     model_id = "org/my-model"
