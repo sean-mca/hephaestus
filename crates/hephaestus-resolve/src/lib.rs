@@ -12,5 +12,5 @@ pub mod resolver;
 pub(crate) mod s3;
 
 pub use error::ResolveError;
-pub use forge::{ForgeClient, StubForgeClient};
+pub use forge::{ConversionMetadata, ForgeClient, ForgeResponse, HttpForgeClient, StubForgeClient};
 pub use resolver::ModelResolver;

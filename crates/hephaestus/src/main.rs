@@ -16,7 +16,7 @@ use hephaestus_core::{
     ClassifierPipeline, EmbeddingsPipeline, ModelProfile, PipelineKind, Seq2SeqPipeline,
     TokenClassifierPipeline, detect_profile,
 };
-use hephaestus_resolve::ModelResolver;
+use hephaestus_resolve::{HttpForgeClient, ModelResolver};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -40,6 +40,7 @@ async fn main() -> Result<(), anyhow::Error> {
         shutdown_timeout_secs = config.shutdown_timeout_secs,
         s3_bucket = ?config.s3_bucket,
         forge_url = ?config.forge_url,
+        forge_timeout_secs = config.forge_timeout_secs,
         model_profile = ?config.model_profile,
         "configuration loaded"
     );
@@ -54,18 +55,36 @@ async fn main() -> Result<(), anyhow::Error> {
         config.model_dir()?
     } else {
         // Automatic resolution: S3 cache -> HuggingFace -> Forge (RSLV-05).
-        let resolver = ModelResolver::new(
-            config.s3_bucket.as_deref(),
-            config.s3_prefix.as_deref(),
-            config.forge_url.as_deref(),
-        )
-        .await
-        .context("failed to construct model resolver")?;
-
-        resolver
-            .resolve(&config.model_id)
+        // When FORGE_URL is set, use HttpForgeClient; otherwise StubForgeClient.
+        // The two branches produce different generic types, so we resolve
+        // inside each branch and return the PathBuf.
+        if let Some(ref forge_url) = config.forge_url {
+            let forge_client = HttpForgeClient::new(forge_url, config.forge_timeout_secs);
+            let resolver = ModelResolver::new_with_client(
+                config.s3_bucket.as_deref(),
+                config.s3_prefix.as_deref(),
+                forge_client,
+            )
             .await
-            .context("failed to resolve model")?
+            .context("failed to construct model resolver")?;
+
+            resolver
+                .resolve(&config.model_id)
+                .await
+                .context("failed to resolve model")?
+        } else {
+            let resolver = ModelResolver::new_with_stub(
+                config.s3_bucket.as_deref(),
+                config.s3_prefix.as_deref(),
+            )
+            .await
+            .context("failed to construct model resolver")?;
+
+            resolver
+                .resolve(&config.model_id)
+                .await
+                .context("failed to resolve model")?
+        }
     };
     tracing::info!(
         model_id = %config.model_id,

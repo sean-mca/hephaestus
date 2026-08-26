@@ -18,16 +18,16 @@ use crate::s3;
 /// Exposes a single `resolve()` method per the Ousterhout deep module
 /// pattern (RSLV-05). Callers never see S3/HF/Forge internals.
 ///
-/// Phase 3 uses [`StubForgeClient`] for the Forge tier. Phase 5 will
-/// generalize this to accept any [`ForgeClient`] implementation.
-pub struct ModelResolver {
+/// Generic over [`ForgeClient`] so the binary can inject either
+/// [`StubForgeClient`] (when `FORGE_URL` is unset) or
+/// [`HttpForgeClient`](crate::forge::HttpForgeClient) (when configured).
+/// Defaults to [`StubForgeClient`] for backward compatibility.
+pub struct ModelResolver<F: ForgeClient = StubForgeClient> {
     cache_dir: PathBuf,
     s3_client: Option<aws_sdk_s3::Client>,
     s3_bucket: Option<String>,
     s3_prefix: Option<String>,
-    forge: StubForgeClient,
-    #[allow(dead_code)]
-    forge_url: Option<String>,
+    forge: F,
 }
 
 /// Validate that a model ID contains only allowed characters (T-03-01, T-03-04).
@@ -66,8 +66,26 @@ pub fn validate_model_id(model_id: &str) -> Result<(), ResolveError> {
     Ok(())
 }
 
-impl ModelResolver {
-    /// Create a new model resolver.
+impl ModelResolver<StubForgeClient> {
+    /// Create a new model resolver with the stub Forge client.
+    ///
+    /// Used when `FORGE_URL` is not configured. The stub always returns
+    /// [`ResolveError::ForgeUnavailable`] for the Forge tier.
+    ///
+    /// # Arguments
+    ///
+    /// * `s3_bucket` -- S3 bucket name for cache tier (optional, D-03).
+    /// * `s3_prefix` -- S3 key prefix prepended to model IDs (optional).
+    pub async fn new_with_stub(
+        s3_bucket: Option<&str>,
+        s3_prefix: Option<&str>,
+    ) -> Result<Self, ResolveError> {
+        Self::new_with_client(s3_bucket, s3_prefix, StubForgeClient).await
+    }
+}
+
+impl<F: ForgeClient> ModelResolver<F> {
+    /// Create a new model resolver with a custom Forge client.
     ///
     /// When `s3_bucket` is `Some`, loads AWS credentials via the default
     /// provider chain (env vars, IMDS, IRSA) and creates an S3 client.
@@ -76,12 +94,12 @@ impl ModelResolver {
     ///
     /// * `s3_bucket` -- S3 bucket name for cache tier (optional, D-03).
     /// * `s3_prefix` -- S3 key prefix prepended to model IDs (optional).
-    /// * `forge_url` -- Forge conversion service URL (optional, D-09).
-    ///   Phase 3 always uses [`StubForgeClient`] regardless of this value.
-    pub async fn new(
+    /// * `forge` -- Forge client implementation (e.g., `HttpForgeClient`
+    ///   or `StubForgeClient`).
+    pub async fn new_with_client(
         s3_bucket: Option<&str>,
         s3_prefix: Option<&str>,
-        forge_url: Option<&str>,
+        forge: F,
     ) -> Result<Self, ResolveError> {
         // Determine cache_dir from HF_HOME or default (D-07).
         // hf-hub uses HF_HOME or ~/.cache/huggingface by default.
@@ -109,8 +127,7 @@ impl ModelResolver {
             s3_client,
             s3_bucket: s3_bucket.map(String::from),
             s3_prefix: s3_prefix.map(String::from),
-            forge: StubForgeClient,
-            forge_url: forge_url.map(String::from),
+            forge,
         })
     }
 
@@ -189,13 +206,15 @@ impl ModelResolver {
         let forge_result = self.forge.convert(model_id).await;
 
         match forge_result {
-            Ok(s3_paths) => {
+            Ok(forge_resp) => {
                 // Forge converted the model and uploaded to S3.
-                // Download the converted model from S3 using the returned paths.
+                // Log conversion metadata and download the model from S3.
                 tracing::info!(
                     model_id,
                     tier = "forge",
-                    s3_paths = ?s3_paths,
+                    s3_paths = ?forge_resp.s3_paths,
+                    architecture = %forge_resp.metadata.architecture,
+                    conversion_duration_secs = forge_resp.metadata.conversion_duration_secs,
                     "Forge conversion succeeded, downloading from S3"
                 );
 
@@ -503,17 +522,16 @@ mod tests {
 
     #[tokio::test]
     async fn resolver_new_without_s3_has_no_client() {
-        let resolver = ModelResolver::new(None, None, None).await.unwrap();
+        let resolver = ModelResolver::new_with_stub(None, None).await.unwrap();
         assert!(resolver.s3_client.is_none());
         assert!(resolver.s3_bucket.is_none());
     }
 
     #[tokio::test]
     async fn resolver_new_with_s3_creates_client() {
-        let resolver = ModelResolver::new(
+        let resolver = ModelResolver::new_with_stub(
             Some("test-bucket"),
             Some("models"),
-            None,
         )
         .await
         .unwrap();
@@ -522,23 +540,11 @@ mod tests {
         assert_eq!(resolver.s3_prefix.as_deref(), Some("models"));
     }
 
-    #[tokio::test]
-    async fn resolver_stores_forge_url() {
-        let resolver = ModelResolver::new(
-            None,
-            None,
-            Some("http://forge:8080"),
-        )
-        .await
-        .unwrap();
-        assert_eq!(resolver.forge_url.as_deref(), Some("http://forge:8080"));
-    }
-
     // --- 3-tier resolve chain tests ---
 
     #[tokio::test]
     async fn resolve_rejects_invalid_model_id() {
-        let resolver = ModelResolver::new(None, None, None).await.unwrap();
+        let resolver = ModelResolver::new_with_stub(None, None).await.unwrap();
         let result = resolver.resolve("../bad").await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ResolveError::InvalidModelId { .. }));
@@ -546,7 +552,7 @@ mod tests {
 
     #[tokio::test]
     async fn forge_tier_returns_unavailable_when_no_forge_url() {
-        // StubForgeClient is always used in Phase 3.
+        // StubForgeClient always returns ForgeUnavailable.
         let forge = StubForgeClient;
         let result = forge.convert("some/model").await;
         assert!(matches!(
