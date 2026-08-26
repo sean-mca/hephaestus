@@ -40,6 +40,11 @@ axum = "0.8"
 tower = { version = "0.5", features = ["timeout"] }
 tower-http = { version = "0.7", features = ["timeout", "trace"] }
 
+# Model acquisition (Phase 3)
+aws-sdk-s3 = "1.143"
+aws-config = { version = "1.11", features = ["behavior-version-latest"] }
+reqwest = { version = "0.13", features = ["json"] }
+
 # Dev/test dependencies
 hf-hub = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }

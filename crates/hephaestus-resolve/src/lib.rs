@@ -8,6 +8,7 @@
 pub mod error;
 pub(crate) mod hf;
 pub mod resolver;
+pub(crate) mod s3;
 
 pub use error::ResolveError;
 pub use resolver::ModelResolver;
