@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 06
 current_phase_name: opendal-storage-abstraction
-status: executing
+status: verifying
 stopped_at: Phase 06 context gathered
-last_updated: "2026-08-26T22:07:49.677Z"
+last_updated: "2026-08-26T22:15:51.938Z"
 last_activity: 2026-08-26
 last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 18
-  completed_plans: 17
-  percent: 83
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-26)
 
 Phase: 06 (opendal-storage-abstraction) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-26 — Phase 06 execution started
 
 Progress: [████████████████████] 9/9 plans (100%)
@@ -69,6 +69,7 @@ Progress: [████████████████████] 9/9 pla
 | Phase 04 P04 | 19min | 3 tasks | 5 files |
 | Phase 05 P02 | 8min | 2 tasks | 6 files |
 | Phase 06 P03 | 3min | 2 tasks | 8 files |
+| Phase 06 P02 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 05]: ForgeResponse carries s3_paths + ConversionMetadata for observability
 - [Phase ?]: opendal.Operator is synchronous in Python; asyncio.to_thread wrapping preserved for non-blocking upload
 - [Phase ?]: Operator root absorbs storage prefix so callers use model_id/filename paths only
+- [Phase ?]: STORAGE_PREFIX maps to OpenDAL root with leading slash for cloud backends, joined with STORAGE_ROOT for fs
+- [Phase ?]: Config validation runs before Operator construction -- startup fails fast on invalid storage_type or missing fs root
 
 ### Pending Todos
 
@@ -135,6 +138,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-26T22:07:49.672Z
+Last session: 2026-08-26T22:15:51.934Z
 Stopped at: Phase 06 context gathered
 Resume file: .planning/phases/06-opendal-storage-abstraction/06-CONTEXT.md
