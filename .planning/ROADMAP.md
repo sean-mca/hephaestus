@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Model Resolution** - Self-building S3 cache with HuggingFace fallback and cache-back (completed 2026-08-26)
 - [x] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching (completed 2026-08-26)
 - [x] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format (completed 2026-08-26)
+- [ ] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry
 
 ## Phase Details
 
@@ -159,7 +160,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -169,6 +170,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 4. Additional Profiles and Dynamic Batching | 4/4 | Complete   | 2026-08-26 |
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
 | 6. OpenDAL Storage Abstraction | 3/3 | Complete   | 2026-08-26 |
+| 7. Production Hardening | 0/1 | In Progress | — |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -194,3 +196,21 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 06-02-PLAN.md — Rust binary crate: Config STORAGE_* fields and Operator wiring
+
+### Phase 7: Production Hardening
+
+**Goal:** Fix production-readiness issues from code review: unlock BERT-family models, harden request handling, improve startup and shutdown resilience
+**Depends on:** Phase 6
+**Success Criteria** (what must be TRUE):
+
+  1. BERT-family models (with token_type_ids) load and serve inference correctly
+  2. Oversized request bodies are rejected before deserialization
+  3. Warmup failure does not crash the pod
+  4. Shutdown flushes logs and runs OTel cleanup before exiting
+  5. HF download retry does not retry auth failures or 404s
+
+**Plans:** 0/1 plans complete
+Plans:
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — token_type_ids support, body limits, resilient warmup/shutdown, smart retry
