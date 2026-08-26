@@ -94,11 +94,11 @@ Plans:
   3. On both S3 and HuggingFace miss, runtime calls the Forge API for conversion (returns a clear error if Forge is unavailable)
   4. Developer configures only MODEL_ID; the 3-tier resolution chain is abstracted behind a single resolve() call
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — HuggingFace resolution vertical slice: resolve crate + HF download + binary wiring
+- [x] 03-01-PLAN.md — HuggingFace resolution vertical slice: resolve crate + HF download + binary wiring
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -144,6 +144,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Core Inference Engine | 3/3 | Complete    | 2026-08-23 |
 | 2. HTTP Serving and Observability | 4/4 | Complete   | 2026-08-24 |
-| 3. Model Resolution | 0/0 | Not started | - |
+| 3. Model Resolution | 1/2 | In Progress|  |
 | 4. Additional Profiles and Dynamic Batching | 0/0 | Not started | - |
 | 5. Forge Conversion Service | 0/0 | Not started | - |
