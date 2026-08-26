@@ -534,22 +534,25 @@ fn default_forge_timeout_secs() -> u64 {
 | A5 | boto3 >= 1.35 TransferConfig API unchanged | Standard Stack | Low -- stable API for years |
 | A6 | uvicorn >= 0.30 compatible with fastapi >= 0.115 | Standard Stack | Low -- standard pairing |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **optimum opset version selection**
+1. **optimum opset version selection** — RESOLVED
    - What we know: `main_export` auto-selects opset based on model architecture. Minimum opset 13 for T5-like models.
    - What's unclear: Whether to pin a specific opset or let optimum auto-detect. Auto-detect is more flexible but less reproducible.
    - Recommendation: Let optimum auto-detect (default behavior). If specific models fail, add an optional `opset` parameter to the Forge API later.
+   - Resolution: Plans use `task="auto"` with no explicit opset pin. Optimum auto-detects per model architecture.
 
-2. **Forge internal timeout**
+2. **Forge internal timeout** — RESOLVED
    - What we know: Hephaestus has `FORGE_TIMEOUT_SECS` (D-04). The Forge itself has no explicit conversion timeout mentioned.
    - What's unclear: Should the Forge also enforce an internal timeout on `main_export`?
    - Recommendation: Add a `CONVERSION_TIMEOUT_SECS` env var in the Forge (default 540s, less than the 600s client default) so the Forge returns a clear timeout error rather than the client timing out ambiguously.
+   - Resolution: Plan 05-01 config.py adds `conversion_timeout_secs` (default 540). Plan 05-01 queue.py wraps conversion in `asyncio.wait_for` with this value.
 
-3. **HuggingFace authentication in the Forge**
+3. **HuggingFace authentication in the Forge** — RESOLVED
    - What we know: Some models require authentication (gated models). Forge downloads from HF internally (D-03).
    - What's unclear: Whether to support `HF_TOKEN` env var for gated model access.
    - Recommendation: Support `HF_TOKEN` as an optional env var. `optimum` and `transformers` respect it automatically when set.
+   - Resolution: Plan 05-01 config.py adds `hf_token: Optional[str]` field. Optimum/transformers pick it up from the environment automatically.
 
 ## Environment Availability
 
