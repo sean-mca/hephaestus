@@ -12,7 +12,7 @@ import structlog
 from forge.config import ForgeSettings
 from forge.converter import convert_model, validate_model
 from forge.models import ConvertResponse
-from forge.storage import upload_to_s3
+from forge.storage import build_operator, upload_to_storage
 
 logger = structlog.get_logger()
 
@@ -79,7 +79,7 @@ class ConversionQueue:
         output_dir: str,
         settings: ForgeSettings,
     ) -> ConvertResponse:
-        """Run conversion, validation, and S3 upload in a thread pool."""
+        """Run conversion, validation, and storage upload in a thread pool."""
         logger.info("conversion_start", model_id=model_id)
 
         metadata = await asyncio.to_thread(convert_model, model_id, output_dir)
@@ -88,12 +88,12 @@ class ConversionQueue:
         await asyncio.to_thread(validate_model, output_dir)
         logger.info("conversion_validated", model_id=model_id)
 
+        op = build_operator(settings)
         s3_paths = await asyncio.to_thread(
-            upload_to_s3,
-            output_dir,
-            settings.s3_bucket,
-            settings.s3_prefix,
+            upload_to_storage,
+            op,
             model_id,
+            output_dir,
         )
         logger.info(
             "conversion_uploaded",
