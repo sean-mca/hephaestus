@@ -57,10 +57,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Forge Service
 
-- [ ] **FORG-01**: Forge is a persistent Python service that converts HuggingFace models to ONNX format via `optimum`
-- [ ] **FORG-02**: Forge uploads converted ONNX files to S3 after conversion
-- [ ] **FORG-03**: Forge exposes an API that Hephaestus calls when S3 and HuggingFace both lack ONNX files
-- [ ] **FORG-04**: Forge validates converted ONNX model integrity before uploading to S3
+- [x] **FORG-01**: Forge is a persistent Python service that converts HuggingFace models to ONNX format via `optimum`
+- [x] **FORG-02**: Forge uploads converted ONNX files to S3 after conversion
+- [x] **FORG-03**: Forge exposes an API that Hephaestus calls when S3 and HuggingFace both lack ONNX files
+- [x] **FORG-04**: Forge validates converted ONNX model integrity before uploading to S3
 
 ### Cross-Cutting
 
@@ -137,10 +137,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | BTCH-01 | Phase 4 | Complete |
 | BTCH-02 | Phase 4 | Complete |
 | BTCH-03 | Phase 4 | Complete |
-| FORG-01 | Phase 5 | Pending |
-| FORG-02 | Phase 5 | Pending |
-| FORG-03 | Phase 5 | Pending |
-| FORG-04 | Phase 5 | Pending |
+| FORG-01 | Phase 5 | Complete |
+| FORG-02 | Phase 5 | Complete |
+| FORG-03 | Phase 5 | Complete |
+| FORG-04 | Phase 5 | Complete |
 | XCUT-01 | Phase 1 | Complete |
 | XCUT-02 | Phase 1 | Complete |
 | XCUT-03 | Phase 1 | Complete |

@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 04
-current_phase_name: additional-profiles-and-dynamic-batching
+current_phase: 05
+current_phase_name: forge-conversion-service
 status: executing
 stopped_at: Phase 05 context gathered
-last_updated: "2026-08-26T17:52:46.886Z"
+last_updated: "2026-08-26T19:17:05.028Z"
 last_activity: 2026-08-26
-last_activity_desc: Phase 04 execution started
+last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 15
+  completed_plans: 14
   percent: 80
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-26)
 
 **Core value:** A single Rust binary that takes a model name, resolves it to ONNX files, and serves inference with full pre/post-processing -- replacing every per-model Python runtime in the cluster.
-**Current focus:** Phase 04 — additional-profiles-and-dynamic-batching
+**Current focus:** Phase 05 — forge-conversion-service
 
 ## Current Position
 
-Phase: 04 (additional-profiles-and-dynamic-batching) — EXECUTING
-Plan: 2 of 4
+Phase: 05 (forge-conversion-service) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-26 — Phase 04 execution started
+Last activity: 2026-08-26 — Phase 05 execution started
 
 Progress: [████████████████████] 9/9 plans (100%)
 
@@ -105,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Seq2Seq tries i64 first, falls back to f32 with rounding
 - [Phase ?]: check_outputs_nonempty() inline guard for SessionOutputs
 - [Phase ?]: Result returns for softmax/argmax per err-result-over-panic.md
+- [Phase ?]: pytest-asyncio with auto mode for async test support
+- [Phase ?]: Manual app.state setup in test fixtures (ASGITransport does not trigger lifespan)
+- [Phase ?]: uv.lock committed for reproducible builds per D-14
 
 ### Pending Todos
 
@@ -125,6 +128,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-26T17:52:46.882Z
+Last session: 2026-08-26T19:16:47.907Z
 Stopped at: Phase 05 context gathered
 Resume file: .planning/phases/05-forge-conversion-service/05-CONTEXT.md
