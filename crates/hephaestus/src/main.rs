@@ -13,7 +13,8 @@ use std::time::Duration;
 use anyhow::Context;
 use hephaestus_api::{AppState, build_router};
 use hephaestus_core::{
-    ClassifierPipeline, EmbeddingsPipeline, ModelProfile, PipelineKind, detect_profile,
+    ClassifierPipeline, EmbeddingsPipeline, ModelProfile, PipelineKind, Seq2SeqPipeline,
+    detect_profile,
 };
 use hephaestus_resolve::ModelResolver;
 
@@ -100,7 +101,10 @@ async fn main() -> Result<(), anyhow::Error> {
             PipelineKind::Embeddings(pipeline)
         }
         ModelProfile::Seq2Seq => {
-            anyhow::bail!("seq2seq profile is not yet implemented (coming in Plan 02)");
+            let pipeline = Seq2SeqPipeline::new(&model_dir)
+                .context("failed to construct seq2seq pipeline")?;
+            tracing::info!("seq2seq pipeline constructed");
+            PipelineKind::Seq2Seq(pipeline)
         }
         ModelProfile::TokenClassifier => {
             anyhow::bail!(

@@ -17,6 +17,6 @@ pub(crate) mod postprocess;
 pub use error::CoreError;
 pub use pipeline::{
     ClassifierOutput, ClassifierPipeline, EmbeddingsPipeline, Pipeline,
-    PipelineKind, PreparedInput,
+    PipelineKind, PreparedInput, Seq2SeqPipeline,
 };
 pub use profile::{ModelProfile, detect_profile};
