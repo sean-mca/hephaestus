@@ -159,7 +159,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -168,3 +168,15 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Model Resolution | 2/2 | Complete    | 2026-08-26 |
 | 4. Additional Profiles and Dynamic Batching | 4/4 | Complete   | 2026-08-26 |
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
+| 6. OpenDAL Storage Abstraction | 0/0 | Pending    | — |
+
+### Phase 6: OpenDAL Storage Abstraction
+
+**Goal:** Replace aws-sdk-s3 with Apache OpenDAL for storage operations, enabling multi-cloud and local-fs backends via configuration
+**Requirements**: STOR-01
+**Depends on:** Phase 3
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 6 to break down)
