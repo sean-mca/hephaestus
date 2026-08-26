@@ -185,7 +185,7 @@ mod tests {
         // Verify request arrived. Send a reply to complete the round trip.
         let _ = req.reply.send(Ok(serde_json::json!({"test": true})));
 
-        let _ = handle.await.expect("submit task should complete");
+        handle.await.expect("submit task should complete");
     }
 
     #[tokio::test]
