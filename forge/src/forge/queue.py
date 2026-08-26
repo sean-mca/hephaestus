@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import tempfile
-from collections import defaultdict
+from collections import OrderedDict
 
 import structlog
 
@@ -25,22 +25,29 @@ class ConversionQueue:
     * A per-``model_id`` ``asyncio.Lock`` ensures that concurrent
       requests for the same model block and receive the cached result
       rather than triggering duplicate work (D-08).
+    * Results are cached with LRU eviction at ``MAX_CACHED`` entries
+      to prevent unbounded memory growth.
     """
+
+    MAX_CACHED = 256
 
     def __init__(self) -> None:
         self._semaphore = asyncio.Semaphore(1)
-        self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
-        self._results: dict[str, ConvertResponse] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._results: OrderedDict[str, ConvertResponse] = OrderedDict()
 
     async def convert(
         self, model_id: str, settings: ForgeSettings
     ) -> ConvertResponse:
         """Convert *model_id* to ONNX, returning cached results when available."""
+        if model_id not in self._locks:
+            self._locks[model_id] = asyncio.Lock()
         lock = self._locks[model_id]
         async with lock:
             # D-08: Return cached result if already converted.
             if model_id in self._results:
                 logger.info("conversion_cache_hit", model_id=model_id)
+                self._results.move_to_end(model_id)
                 return self._results[model_id]
 
             # D-10: Only one conversion at a time.
@@ -56,6 +63,10 @@ class ConversionQueue:
                     # guarantee and risking OOM from concurrent conversions.
                     result = await self._do_convert(model_id, output_dir, settings)
                     self._results[model_id] = result
+                    # Evict oldest entries to bound memory.
+                    while len(self._results) > self.MAX_CACHED:
+                        evicted_id, _ = self._results.popitem(last=False)
+                        self._locks.pop(evicted_id, None)
                     return result
                 except Exception:
                     # Clean up temp dir on any failure.
