@@ -9,7 +9,7 @@ pub mod error;
 pub mod forge;
 pub(crate) mod hf;
 pub mod resolver;
-pub(crate) mod s3;
+pub(crate) mod storage;
 
 pub use error::ResolveError;
 pub use forge::{ConversionMetadata, ForgeClient, ForgeResponse, HttpForgeClient, StubForgeClient};

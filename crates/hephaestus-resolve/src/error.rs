@@ -19,9 +19,9 @@ pub enum ResolveError {
         model_id: String,
     },
 
-    /// S3 operation failed.
-    #[error("S3 error: {0}")]
-    S3(String),
+    /// Storage operation failed.
+    #[error("storage error: {0}")]
+    Storage(String),
 
     /// HuggingFace download failed.
     #[error("HuggingFace error: {0}")]
