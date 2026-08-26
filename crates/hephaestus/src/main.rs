@@ -14,8 +14,8 @@ use std::time::Duration;
 use anyhow::Context;
 use hephaestus_api::{AppState, Batcher, batcher_loop, build_router};
 use hephaestus_core::{
-    ClassifierPipeline, EmbeddingsPipeline, ModelProfile, PipelineKind, Seq2SeqPipeline,
-    TokenClassifierPipeline, detect_profile,
+    ClassifierPipeline, EmbeddingsPipeline, ExecutionProvider, ModelProfile, PipelineKind,
+    Seq2SeqPipeline, TokenClassifierPipeline, detect_profile,
 };
 use hephaestus_resolve::{HttpForgeClient, ModelResolver};
 
@@ -25,6 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
     //    Config must be loaded before tracing init so we can use LOG_LEVEL.
     let config = config::Config::from_env()?;
     config.validate()?;
+    let ep: ExecutionProvider = config.parsed_execution_provider()?;
 
     // 2. Initialize telemetry: structured JSON logging + conditional OTel export (D-11).
     //    Must be called inside the tokio runtime (after #[tokio::main]) because the
@@ -35,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
     )?;
     tracing::info!(
         model_id = %config.model_id,
-        execution_provider = %config.execution_provider,
+        execution_provider = %ep,
         port = config.port,
         request_timeout_secs = config.request_timeout_secs,
         shutdown_timeout_secs = config.shutdown_timeout_secs,
@@ -143,25 +144,25 @@ async fn main() -> Result<(), anyhow::Error> {
     // 4. Construct the appropriate pipeline based on detected profile (D-03).
     let pipeline_kind = match profile {
         ModelProfile::Classifier => {
-            let pipeline = ClassifierPipeline::new(&model_dir)
+            let pipeline = ClassifierPipeline::new(&model_dir, &ep)
                 .context("failed to construct classifier pipeline")?;
             tracing::info!("classifier pipeline constructed");
             PipelineKind::Classifier(pipeline)
         }
         ModelProfile::Embeddings => {
-            let pipeline = EmbeddingsPipeline::new(&model_dir)
+            let pipeline = EmbeddingsPipeline::new(&model_dir, &ep)
                 .context("failed to construct embeddings pipeline")?;
             tracing::info!("embeddings pipeline constructed");
             PipelineKind::Embeddings(pipeline)
         }
         ModelProfile::Seq2Seq => {
-            let pipeline = Seq2SeqPipeline::new(&model_dir)
+            let pipeline = Seq2SeqPipeline::new(&model_dir, &ep)
                 .context("failed to construct seq2seq pipeline")?;
             tracing::info!("seq2seq pipeline constructed");
             PipelineKind::Seq2Seq(pipeline)
         }
         ModelProfile::TokenClassifier => {
-            let pipeline = TokenClassifierPipeline::new(&model_dir)
+            let pipeline = TokenClassifierPipeline::new(&model_dir, &ep)
                 .context("failed to construct token classifier pipeline")?;
             tracing::info!("token classifier pipeline constructed");
             PipelineKind::TokenClassifier(pipeline)

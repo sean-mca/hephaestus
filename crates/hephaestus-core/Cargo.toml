@@ -12,6 +12,11 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+[features]
+cuda = ["ort/cuda"]
+tensorrt = ["ort/tensorrt"]
+coreml = ["ort/coreml"]
+
 [dev-dependencies]
 hf-hub.workspace = true
 tokio.workspace = true

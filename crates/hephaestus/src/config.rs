@@ -6,6 +6,7 @@
 use std::path::{Component, PathBuf};
 
 use anyhow::{Context, bail};
+use hephaestus_core::ExecutionProvider;
 use serde::Deserialize;
 
 /// Runtime configuration deserialized from environment variables.
@@ -202,8 +203,21 @@ impl Config {
         Ok(path)
     }
 
+    /// Parse the `execution_provider` string into a typed enum.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value is not one of the accepted
+    /// execution provider names (`cpu`, `cuda`, `tensorrt`, `coreml`).
+    pub fn parsed_execution_provider(&self) -> Result<ExecutionProvider, anyhow::Error> {
+        self.execution_provider
+            .parse::<ExecutionProvider>()
+            .context("invalid EXECUTION_PROVIDER value")
+    }
+
     /// Validate configuration values before resource allocation.
     ///
+    /// Checks execution provider, storage type, and batch parameters.
     /// When `batch_enabled` is true, validates that `batch_max_size`
     /// is within [1, 64] and that `batch_max_wait_ms` does not exceed
     /// `request_timeout_secs * 1000`. When batching is disabled,
@@ -213,6 +227,8 @@ impl Config {
     ///
     /// Returns an error if any configuration value is out of range.
     pub fn validate(&self) -> Result<(), anyhow::Error> {
+        // Validate execution provider early (T-EP-01).
+        self.parsed_execution_provider()?;
         // T-06-05: validate storage_type against explicit allowlist.
         const ALLOWED_STORAGE_TYPES: &[&str] = &["s3", "fs", "gcs", "azblob", "none"];
         if !ALLOWED_STORAGE_TYPES.contains(&self.storage_type.as_str()) {
@@ -525,6 +541,39 @@ mod tests {
             let result = config.validate();
             assert!(result.is_ok(), "storage_type={st} should be accepted, got: {result:?}");
         }
+    }
+
+    #[test]
+    fn test_parsed_execution_provider_accepts_all_valid() {
+        for (input, expected) in &[
+            ("cpu", hephaestus_core::ExecutionProvider::Cpu),
+            ("cuda", hephaestus_core::ExecutionProvider::Cuda),
+            ("tensorrt", hephaestus_core::ExecutionProvider::TensorRt),
+            ("coreml", hephaestus_core::ExecutionProvider::CoreMl),
+        ] {
+            let mut config = config_with_model_path(None);
+            config.execution_provider = input.to_string();
+            let ep = config
+                .parsed_execution_provider()
+                .unwrap_or_else(|_| panic!("should parse '{input}'"));
+            assert_eq!(ep, *expected, "mismatch for input '{input}'");
+        }
+    }
+
+    #[test]
+    fn test_parsed_execution_provider_rejects_invalid() {
+        let mut config = config_with_model_path(None);
+        config.execution_provider = "vulkan".to_string();
+        let result = config.parsed_execution_provider();
+        assert!(result.is_err(), "'vulkan' should be rejected");
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_execution_provider() {
+        let mut config = config_with_model_path(None);
+        config.execution_provider = "bogus".to_string();
+        let result = config.validate();
+        assert!(result.is_err(), "invalid EP should fail validation");
     }
 
     #[test]

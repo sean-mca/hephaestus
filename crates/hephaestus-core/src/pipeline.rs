@@ -10,6 +10,7 @@ use tokenizers::Tokenizer;
 
 use serde::Serialize;
 
+use crate::ep::ExecutionProvider;
 use crate::error::CoreError;
 use crate::postprocess;
 
@@ -133,9 +134,11 @@ fn check_outputs_nonempty(outputs: &ort::session::SessionOutputs<'_>) -> Result<
 /// Load an ONNX session from a model directory.
 ///
 /// Resolves the model file with `onnx/` subdirectory fallback, loads
-/// with Level3 optimization, loads the tokenizer, and validates inputs.
+/// with Level3 optimization, registers the requested execution
+/// providers, loads the tokenizer, and validates inputs.
 fn load_session_and_tokenizer(
     model_dir: &Path,
+    ep: &ExecutionProvider,
 ) -> Result<(Session, Tokenizer), CoreError> {
     // 1. Resolve model file with onnx/ subdirectory fallback.
     let onnx_subdir = model_dir.join("onnx/model.onnx");
@@ -152,11 +155,22 @@ fn load_session_and_tokenizer(
         )));
     };
 
-    // 2. Load ONNX session (ort v2 -- no Environment).
-    let session = Session::builder()
+    // 2. Build execution provider list (may fail if feature not compiled).
+    let providers = ep.to_ort_providers()?;
+
+    // 3. Load ONNX session (ort v2 -- no Environment).
+    let mut builder = Session::builder()
         .map_err(|e| CoreError::ModelLoad(e.to_string()))?
         .with_optimization_level(GraphOptimizationLevel::Level3)
-        .map_err(|e| CoreError::ModelLoad(e.to_string()))?
+        .map_err(|e| CoreError::ModelLoad(e.to_string()))?;
+
+    if !providers.is_empty() {
+        builder = builder
+            .with_execution_providers(providers)
+            .map_err(|e| CoreError::ModelLoad(e.to_string()))?;
+    }
+
+    let session = builder
         .commit_from_file(&model_path)
         .map_err(|e| CoreError::ModelLoad(e.to_string()))?;
 
@@ -305,8 +319,8 @@ impl ClassifierPipeline {
     ///
     /// Returns [`CoreError`] if any required file is missing or invalid,
     /// or if the tokenizer outputs are incompatible with the model inputs.
-    pub fn new(model_dir: &Path) -> Result<Self, CoreError> {
-        let (session, tokenizer) = load_session_and_tokenizer(model_dir)?;
+    pub fn new(model_dir: &Path, ep: &ExecutionProvider) -> Result<Self, CoreError> {
+        let (session, tokenizer) = load_session_and_tokenizer(model_dir, ep)?;
 
         // Load id2label from config.json.
         let config_path = model_dir.join("config.json");
@@ -393,8 +407,8 @@ impl EmbeddingsPipeline {
     ///
     /// Returns [`CoreError`] if any required file is missing or invalid,
     /// or if the tokenizer outputs are incompatible with the model inputs.
-    pub fn new(model_dir: &Path) -> Result<Self, CoreError> {
-        let (session, tokenizer) = load_session_and_tokenizer(model_dir)?;
+    pub fn new(model_dir: &Path, ep: &ExecutionProvider) -> Result<Self, CoreError> {
+        let (session, tokenizer) = load_session_and_tokenizer(model_dir, ep)?;
         Ok(Self { session, tokenizer })
     }
 }
@@ -467,8 +481,8 @@ impl Seq2SeqPipeline {
     ///
     /// Returns [`CoreError`] if any required file is missing or invalid,
     /// or if the tokenizer outputs are incompatible with the model inputs.
-    pub fn new(model_dir: &Path) -> Result<Self, CoreError> {
-        let (session, tokenizer) = load_session_and_tokenizer(model_dir)?;
+    pub fn new(model_dir: &Path, ep: &ExecutionProvider) -> Result<Self, CoreError> {
+        let (session, tokenizer) = load_session_and_tokenizer(model_dir, ep)?;
         Ok(Self { session, tokenizer })
     }
 }
@@ -555,8 +569,8 @@ impl TokenClassifierPipeline {
     ///
     /// Returns [`CoreError`] if any required file is missing or invalid,
     /// or if the tokenizer outputs are incompatible with the model inputs.
-    pub fn new(model_dir: &Path) -> Result<Self, CoreError> {
-        let (session, tokenizer) = load_session_and_tokenizer(model_dir)?;
+    pub fn new(model_dir: &Path, ep: &ExecutionProvider) -> Result<Self, CoreError> {
+        let (session, tokenizer) = load_session_and_tokenizer(model_dir, ep)?;
 
         // Load id2label from config.json.
         let config_path = model_dir.join("config.json");
