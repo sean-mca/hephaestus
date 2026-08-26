@@ -119,6 +119,17 @@ pub trait Pipeline {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+/// Check that session outputs are non-empty before tensor extraction (WR-05).
+///
+/// Returns [`CoreError::Inference`] if the model produced zero output tensors,
+/// which would otherwise cause a panic via direct `outputs[0]` indexing.
+fn check_outputs_nonempty(outputs: &ort::session::SessionOutputs<'_>) -> Result<(), CoreError> {
+    if outputs.len() == 0 {
+        return Err(CoreError::Inference("model produced no output tensors".into()));
+    }
+    Ok(())
+}
+
 /// Load an ONNX session from a model directory.
 ///
 /// Resolves the model file with `onnx/` subdirectory fallback, loads
@@ -293,6 +304,9 @@ impl Pipeline for ClassifierPipeline {
     fn execute(&mut self, prepared: PreparedInput) -> Result<ClassifierOutput, CoreError> {
         let outputs = run_onnx_inference(&mut self.session, &prepared)?;
 
+        // WR-05: Guard against models with zero output tensors.
+        check_outputs_nonempty(&outputs)?;
+
         // Extract logits tensor.
         let logits = outputs[0]
             .try_extract_tensor::<f32>()
@@ -368,6 +382,9 @@ impl Pipeline for EmbeddingsPipeline {
         let attention_mask = prepared.attention_mask.clone();
         let outputs = run_onnx_inference(&mut self.session, &prepared)?;
 
+        // WR-05: Guard against models with zero output tensors.
+        check_outputs_nonempty(&outputs)?;
+
         // Extract output tensor -- shape (1, seq_len, hidden_dim).
         let tensor = outputs[0]
             .try_extract_tensor::<f32>()
@@ -438,15 +455,35 @@ impl Pipeline for Seq2SeqPipeline {
     fn execute(&mut self, prepared: PreparedInput) -> Result<String, CoreError> {
         let outputs = run_onnx_inference(&mut self.session, &prepared)?;
 
+        // WR-05: Guard against models with zero output tensors.
+        check_outputs_nonempty(&outputs)?;
+
         // Fused seq2seq models output generated token IDs.
         // Try extracting as i64 first (most common); fall back to f32 and round.
+        // WR-02: Use checked u32 conversion instead of bare `as u32` casts.
         let output_ids: Vec<u32> =
             if let Ok(tensor) = outputs[0].try_extract_tensor::<i64>() {
                 let (_, data) = tensor;
-                data.iter().map(|&id| id as u32).collect()
+                data.iter()
+                    .map(|&id| {
+                        u32::try_from(id).map_err(|_| {
+                            CoreError::Inference(format!("negative token ID {id} in seq2seq output"))
+                        })
+                    })
+                    .collect::<Result<Vec<u32>, CoreError>>()?
             } else if let Ok(tensor) = outputs[0].try_extract_tensor::<f32>() {
                 let (_, data) = tensor;
-                data.iter().map(|&v| v.round() as u32).collect()
+                data.iter()
+                    .map(|&v| {
+                        let rounded = v.round();
+                        if rounded < 0.0 || rounded > u32::MAX as f32 {
+                            return Err(CoreError::Inference(format!(
+                                "token ID {v} out of u32 range in seq2seq output"
+                            )));
+                        }
+                        Ok(rounded as u32)
+                    })
+                    .collect::<Result<Vec<u32>, CoreError>>()?
             } else {
                 return Err(CoreError::Inference(
                     "seq2seq output tensor is neither i64 nor f32".to_string(),
@@ -544,6 +581,9 @@ impl Pipeline for TokenClassifierPipeline {
 
         let num_tokens = prepared.sequence_length;
         let outputs = run_onnx_inference(&mut self.session, &prepared)?;
+
+        // WR-05: Guard against models with zero output tensors.
+        check_outputs_nonempty(&outputs)?;
 
         // Extract logits tensor -- shape (1, num_tokens, num_labels).
         let tensor = outputs[0]
@@ -818,6 +858,12 @@ fn batch_postprocess_classifier(
     batch_size: usize,
     id2label: &[String],
 ) -> Vec<Result<serde_json::Value, CoreError>> {
+    // WR-05: Guard against models with zero output tensors.
+    if let Err(e) = check_outputs_nonempty(&outputs) {
+        return (0..batch_size)
+            .map(|_| Err(CoreError::Inference(e.to_string())))
+            .collect();
+    }
     let tensor = match outputs[0].try_extract_tensor::<f32>() {
         Ok(t) => t,
         Err(e) => {
@@ -840,7 +886,13 @@ fn batch_postprocess_classifier(
             let sample_logits = &data[i * num_labels..(i + 1) * num_labels];
             let probs = postprocess::softmax(sample_logits)?;
             let (idx, score) = postprocess::argmax_with_score(&probs)?;
-            let label = id2label.get(idx).cloned().unwrap_or_default();
+            // CR-04: Return error on out-of-range label index (not empty string).
+            let label = id2label.get(idx).ok_or_else(|| {
+                CoreError::Inference(format!(
+                    "argmax index {idx} out of range for id2label (len {})",
+                    id2label.len(),
+                ))
+            })?.clone();
             Ok(serde_json::json!({ "label": label, "score": score }))
         })
         .collect()
@@ -853,6 +905,12 @@ fn batch_postprocess_embeddings(
     max_seq_len: usize,
     attention_mask_array: &Array2<i64>,
 ) -> Vec<Result<serde_json::Value, CoreError>> {
+    // WR-05: Guard against models with zero output tensors.
+    if let Err(e) = check_outputs_nonempty(&outputs) {
+        return (0..batch_size)
+            .map(|_| Err(CoreError::Inference(e.to_string())))
+            .collect();
+    }
     let tensor = match outputs[0].try_extract_tensor::<f32>() {
         Ok(t) => t,
         Err(e) => {
@@ -885,11 +943,19 @@ fn batch_postprocess_embeddings(
 }
 
 /// Seq2Seq batch post-processing: extract token IDs and decode per sample.
+/// WR-02: Uses checked u32 conversion instead of bare `as u32` casts.
 fn batch_postprocess_seq2seq(
     outputs: ort::session::SessionOutputs<'_>,
     batch_size: usize,
     tokenizer: &Tokenizer,
 ) -> Vec<Result<serde_json::Value, CoreError>> {
+    // WR-05: Guard against models with zero output tensors.
+    if let Err(e) = check_outputs_nonempty(&outputs) {
+        return (0..batch_size)
+            .map(|_| Err(CoreError::Inference(e.to_string())))
+            .collect();
+    }
+
     // Try i64 first, fall back to f32.
     if let Ok(tensor) = outputs[0].try_extract_tensor::<i64>() {
         let (shape, data) = tensor;
@@ -901,7 +967,16 @@ fn batch_postprocess_seq2seq(
         return (0..batch_size)
             .map(|i| {
                 let sample = &data[i * seq_len..(i + 1) * seq_len];
-                let ids: Vec<u32> = sample.iter().map(|&v| v as u32).collect();
+                let ids: Vec<u32> = sample
+                    .iter()
+                    .map(|&v| {
+                        u32::try_from(v).map_err(|_| {
+                            CoreError::Inference(format!(
+                                "negative token ID {v} in seq2seq output"
+                            ))
+                        })
+                    })
+                    .collect::<Result<Vec<u32>, CoreError>>()?;
                 match tokenizer.decode(&ids, true) {
                     Ok(text) => Ok(serde_json::json!({ "generated_text": text })),
                     Err(e) => Err(CoreError::Inference(e.to_string())),
@@ -920,7 +995,18 @@ fn batch_postprocess_seq2seq(
         return (0..batch_size)
             .map(|i| {
                 let sample = &data[i * seq_len..(i + 1) * seq_len];
-                let ids: Vec<u32> = sample.iter().map(|&v| v.round() as u32).collect();
+                let ids: Vec<u32> = sample
+                    .iter()
+                    .map(|&v| {
+                        let rounded = v.round();
+                        if rounded < 0.0 || rounded > u32::MAX as f32 {
+                            return Err(CoreError::Inference(format!(
+                                "token ID {v} out of u32 range in seq2seq output"
+                            )));
+                        }
+                        Ok(rounded as u32)
+                    })
+                    .collect::<Result<Vec<u32>, CoreError>>()?;
                 match tokenizer.decode(&ids, true) {
                     Ok(text) => Ok(serde_json::json!({ "generated_text": text })),
                     Err(e) => Err(CoreError::Inference(e.to_string())),
@@ -943,6 +1029,12 @@ fn batch_postprocess_token_classifier(
     id2label: &[String],
     tokenizer: &Tokenizer,
 ) -> Vec<Result<serde_json::Value, CoreError>> {
+    // WR-05: Guard against models with zero output tensors.
+    if let Err(e) = check_outputs_nonempty(&outputs) {
+        return (0..batch_size)
+            .map(|_| Err(CoreError::Inference(e.to_string())))
+            .collect();
+    }
     let tensor = match outputs[0].try_extract_tensor::<f32>() {
         Ok(t) => t,
         Err(e) => {
@@ -1005,6 +1097,12 @@ fn batch_postprocess_token_classifier(
 ///
 /// The `id2label` field is a JSON object with string keys ("0", "1", ...)
 /// mapping to label strings. Returns a `Vec<String>` ordered by numeric key.
+///
+/// # Errors
+///
+/// Returns [`CoreError::ModelValidation`] if the `id2label` field is missing,
+/// keys are non-numeric, values are non-string, or keys are not contiguous
+/// from 0 (CR-02).
 fn extract_id2label(config: &serde_json::Value) -> Result<Vec<String>, CoreError> {
     let id2label_obj = config
         .get("id2label")
@@ -1031,6 +1129,16 @@ fn extract_id2label(config: &serde_json::Value) -> Result<Vec<String>, CoreError
     }
 
     entries.sort_by_key(|(idx, _)| *idx);
+
+    // CR-02: Validate that keys are contiguous from 0..N.
+    for (expected_index, (actual_key, _)) in entries.iter().enumerate() {
+        if expected_index != *actual_key {
+            return Err(CoreError::ModelValidation(format!(
+                "id2label keys must be contiguous from 0; expected key {expected_index}, found {actual_key}",
+            )));
+        }
+    }
+
     Ok(entries.into_iter().map(|(_, label)| label).collect())
 }
 
@@ -1085,6 +1193,47 @@ mod tests {
 
         // Assert
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_id2label_rejects_noncontiguous() {
+        // Arrange -- gap at key 1
+        let config: serde_json::Value = serde_json::json!({
+            "id2label": {
+                "0": "NEG",
+                "2": "POS"
+            }
+        });
+
+        // Act
+        let result = extract_id2label(&config);
+
+        // Assert
+        assert!(result.is_err(), "non-contiguous keys should be rejected");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("contiguous"),
+            "error should mention 'contiguous': {msg}"
+        );
+    }
+
+    #[test]
+    fn test_id2label_accepts_contiguous() {
+        // Arrange -- contiguous keys 0, 1, 2
+        let config: serde_json::Value = serde_json::json!({
+            "id2label": {
+                "0": "A",
+                "1": "B",
+                "2": "C"
+            }
+        });
+
+        // Act
+        let result = extract_id2label(&config);
+
+        // Assert
+        assert!(result.is_ok(), "contiguous keys should be accepted");
+        assert_eq!(result.unwrap(), vec!["A", "B", "C"]);
     }
 
     #[test]
