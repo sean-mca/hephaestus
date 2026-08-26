@@ -187,9 +187,7 @@ mod tests {
 
     /// Create a memory-backed OpenDAL operator for testing.
     fn memory_operator() -> Operator {
-        Operator::new(opendal::services::Memory::default())
-            .unwrap()
-            .finish()
+        Operator::new(opendal::services::Memory::default()).unwrap()
     }
 
     // --- Constants tests ---

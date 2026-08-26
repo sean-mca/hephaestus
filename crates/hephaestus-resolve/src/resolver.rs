@@ -1,7 +1,7 @@
 //! Model resolver: deep module hiding the 3-tier resolution chain.
 //!
 //! [`ModelResolver`] exposes a single [`resolve()`](ModelResolver::resolve)
-//! method that checks S3 cache, falls back to HuggingFace, and finally
+//! method that checks storage cache, falls back to HuggingFace, and finally
 //! attempts Forge conversion. All tier details, retry logic, and caching
 //! are hidden behind this interface (RSLV-05, D-05).
 
@@ -11,12 +11,12 @@ use std::time::Duration;
 use crate::error::ResolveError;
 use crate::forge::{ForgeClient, StubForgeClient};
 use crate::hf;
-use crate::s3;
+use crate::storage;
 
 /// Model resolver implementing the 3-tier resolution chain.
 ///
 /// Exposes a single `resolve()` method per the Ousterhout deep module
-/// pattern (RSLV-05). Callers never see S3/HF/Forge internals.
+/// pattern (RSLV-05). Callers never see storage/HF/Forge internals.
 ///
 /// Generic over [`ForgeClient`] so the binary can inject either
 /// [`StubForgeClient`] (when `FORGE_URL` is unset) or
@@ -24,9 +24,7 @@ use crate::s3;
 /// Defaults to [`StubForgeClient`] for backward compatibility.
 pub struct ModelResolver<F: ForgeClient = StubForgeClient> {
     cache_dir: PathBuf,
-    s3_client: Option<aws_sdk_s3::Client>,
-    s3_bucket: Option<String>,
-    s3_prefix: Option<String>,
+    operator: Option<opendal::Operator>,
     forge: F,
 }
 
@@ -74,31 +72,24 @@ impl ModelResolver<StubForgeClient> {
     ///
     /// # Arguments
     ///
-    /// * `s3_bucket` -- S3 bucket name for cache tier (optional, D-03).
-    /// * `s3_prefix` -- S3 key prefix prepended to model IDs (optional).
+    /// * `operator` -- OpenDAL operator for storage tier (optional, D-05).
     pub async fn new_with_stub(
-        s3_bucket: Option<&str>,
-        s3_prefix: Option<&str>,
+        operator: Option<opendal::Operator>,
     ) -> Result<Self, ResolveError> {
-        Self::new_with_client(s3_bucket, s3_prefix, StubForgeClient).await
+        Self::new_with_client(operator, StubForgeClient).await
     }
 }
 
 impl<F: ForgeClient> ModelResolver<F> {
     /// Create a new model resolver with a custom Forge client.
     ///
-    /// When `s3_bucket` is `Some`, loads AWS credentials via the default
-    /// provider chain (env vars, IMDS, IRSA) and creates an S3 client.
-    ///
     /// # Arguments
     ///
-    /// * `s3_bucket` -- S3 bucket name for cache tier (optional, D-03).
-    /// * `s3_prefix` -- S3 key prefix prepended to model IDs (optional).
+    /// * `operator` -- OpenDAL operator for storage tier (optional, D-05).
     /// * `forge` -- Forge client implementation (e.g., `HttpForgeClient`
     ///   or `StubForgeClient`).
     pub async fn new_with_client(
-        s3_bucket: Option<&str>,
-        s3_prefix: Option<&str>,
+        operator: Option<opendal::Operator>,
         forge: F,
     ) -> Result<Self, ResolveError> {
         // Determine cache_dir from HF_HOME or default (D-07).
@@ -113,20 +104,9 @@ impl<F: ForgeClient> ModelResolver<F> {
             }
         };
 
-        // Initialize S3 client when bucket is configured (D-03).
-        let s3_client = if s3_bucket.is_some() {
-            let aws_config =
-                aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-            Some(aws_sdk_s3::Client::new(&aws_config))
-        } else {
-            None
-        };
-
         Ok(Self {
             cache_dir,
-            s3_client,
-            s3_bucket: s3_bucket.map(String::from),
-            s3_prefix: s3_prefix.map(String::from),
+            operator,
             forge,
         })
     }
@@ -142,26 +122,21 @@ impl<F: ForgeClient> ModelResolver<F> {
         // T-03-01: validate model ID before any tier logic.
         validate_model_id(model_id)?;
 
-        // Tier 1: S3 cache with retry (D-05).
-        if let (Some(client), Some(bucket)) = (&self.s3_client, &self.s3_bucket) {
-            let prefix = self.s3_prefix.as_deref().unwrap_or("");
-            let cache_dir = &self.cache_dir;
+        // Tier 1: Storage cache (D-05). RetryLayer on the Operator handles retries.
+        if let Some(op) = &self.operator {
+            let storage_result =
+                storage::download_model(op, model_id, &self.cache_dir).await;
 
-            let s3_result = with_retry(3, Duration::from_millis(500), || async {
-                s3::download_model_from_s3(client, bucket, prefix, model_id, cache_dir).await
-            })
-            .await;
-
-            match s3_result {
+            match storage_result {
                 Ok(Some(path)) => {
-                    tracing::info!(model_id, tier = "s3", path = %path.display(), "model resolved from S3 cache");
+                    tracing::info!(model_id, tier = "storage", path = %path.display(), "model resolved from storage cache");
                     return Ok(path);
                 }
                 Ok(None) => {
-                    tracing::info!(model_id, tier = "s3", "S3 cache miss, falling through to HuggingFace");
+                    tracing::info!(model_id, tier = "storage", "storage cache miss, falling through to HuggingFace");
                 }
                 Err(e) => {
-                    tracing::warn!(model_id, tier = "s3", error = %e, "S3 tier failed, falling through to HuggingFace");
+                    tracing::warn!(model_id, tier = "storage", error = %e, "storage tier failed, falling through to HuggingFace");
                 }
             }
         }
@@ -218,13 +193,9 @@ impl<F: ForgeClient> ModelResolver<F> {
                     "Forge conversion succeeded, downloading from S3"
                 );
 
-                if let (Some(client), Some(bucket)) = (&self.s3_client, &self.s3_bucket) {
-                    let prefix = self.s3_prefix.as_deref().unwrap_or("");
-                    let cache_dir = &self.cache_dir;
-
+                if let Some(op) = &self.operator {
                     let download_result =
-                        s3::download_model_from_s3(client, bucket, prefix, model_id, cache_dir)
-                            .await?;
+                        storage::download_model(op, model_id, &self.cache_dir).await?;
 
                     if let Some(path) = download_result {
                         tracing::info!(
@@ -237,9 +208,9 @@ impl<F: ForgeClient> ModelResolver<F> {
                     }
                 }
 
-                // If S3 client not configured, the Forge result can't be downloaded.
-                Err(ResolveError::S3(format!(
-                    "Forge converted model '{model_id}' but S3 is not configured to download it"
+                // If storage not configured, the Forge result can't be downloaded.
+                Err(ResolveError::Storage(format!(
+                    "Forge converted model '{model_id}' but storage is not configured to download it"
                 )))
             }
             Err(e) => {
@@ -250,40 +221,32 @@ impl<F: ForgeClient> ModelResolver<F> {
         }
     }
 
-    /// Spawn a background task to upload model files to S3 (D-12).
+    /// Spawn a background task to upload model files to storage.
     ///
     /// Fire-and-forget: the upload runs in a separate tokio task.
-    /// On failure, logs a warning but does not affect the serving pod (D-14).
+    /// On failure, logs a warning but does not affect the serving pod.
+    /// RetryLayer on the Operator handles transient failures.
     fn spawn_cache_back(&self, model_id: &str, local_dir: &Path) {
-        let Some(client) = self.s3_client.clone() else {
+        let Some(op) = self.operator.clone() else {
             return;
         };
-        let Some(bucket) = self.s3_bucket.clone() else {
-            return;
-        };
-        let prefix = self.s3_prefix.clone().unwrap_or_default();
         let model_id = model_id.to_string();
         let local_dir = local_dir.to_path_buf();
 
         tokio::spawn(async move {
-            let result = with_retry(3, Duration::from_secs(1), || async {
-                s3::upload_model_to_s3(&client, &bucket, &prefix, &model_id, &local_dir).await
-            })
-            .await;
-
-            match result {
+            match storage::upload_model(&op, &model_id, &local_dir).await {
                 Ok(()) => {
                     tracing::info!(
                         model_id,
-                        "successfully cached model to S3"
+                        "successfully cached model to storage"
                     );
                 }
                 Err(e) => {
-                    // D-14: log warning and continue -- upload failure is non-fatal.
+                    // Upload failure is non-fatal -- log warning and continue.
                     tracing::warn!(
                         model_id,
                         error = %e,
-                        "failed to cache model to S3 after retries"
+                        "failed to cache model to storage"
                     );
                 }
             }
@@ -521,30 +484,23 @@ mod tests {
     // --- ModelResolver construction tests ---
 
     #[tokio::test]
-    async fn resolver_new_without_s3_has_no_client() {
-        let resolver = ModelResolver::new_with_stub(None, None).await.unwrap();
-        assert!(resolver.s3_client.is_none());
-        assert!(resolver.s3_bucket.is_none());
+    async fn resolver_new_without_operator() {
+        let resolver = ModelResolver::new_with_stub(None).await.unwrap();
+        assert!(resolver.operator.is_none());
     }
 
     #[tokio::test]
-    async fn resolver_new_with_s3_creates_client() {
-        let resolver = ModelResolver::new_with_stub(
-            Some("test-bucket"),
-            Some("models"),
-        )
-        .await
-        .unwrap();
-        assert!(resolver.s3_client.is_some());
-        assert_eq!(resolver.s3_bucket.as_deref(), Some("test-bucket"));
-        assert_eq!(resolver.s3_prefix.as_deref(), Some("models"));
+    async fn resolver_new_with_operator() {
+        let op = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+        let resolver = ModelResolver::new_with_stub(Some(op)).await.unwrap();
+        assert!(resolver.operator.is_some());
     }
 
     // --- 3-tier resolve chain tests ---
 
     #[tokio::test]
     async fn resolve_rejects_invalid_model_id() {
-        let resolver = ModelResolver::new_with_stub(None, None).await.unwrap();
+        let resolver = ModelResolver::new_with_stub(None).await.unwrap();
         let result = resolver.resolve("../bad").await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ResolveError::InvalidModelId { .. }));

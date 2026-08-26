@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-aws-config.workspace = true
-aws-sdk-s3.workspace = true
 opendal.workspace = true
 hf-hub.workspace = true
 reqwest.workspace = true
