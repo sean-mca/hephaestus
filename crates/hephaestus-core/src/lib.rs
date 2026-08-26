@@ -10,11 +10,13 @@
 //! Profile detection via [`detect_profile`] auto-selects the correct
 //! pipeline based on the model's `config.json`.
 
+pub mod ep;
 pub mod error;
 pub mod pipeline;
 pub mod profile;
 pub(crate) mod postprocess;
 
+pub use ep::ExecutionProvider;
 pub use error::CoreError;
 pub use pipeline::{
     ClassifierOutput, ClassifierPipeline, EmbeddingsPipeline, Entity,
