@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use hephaestus_api::{AppState, build_router};
+use hephaestus_api::{AppState, Batcher, batcher_loop, build_router};
 use hephaestus_core::{
     ClassifierPipeline, EmbeddingsPipeline, ModelProfile, PipelineKind, Seq2SeqPipeline,
     TokenClassifierPipeline, detect_profile,
@@ -114,14 +114,41 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
 
-    // 5. Build shared state (readiness starts false per D-05).
+    // 5. Build shared state with optional batcher (D-07).
+    let batcher_handle = if config.batch_enabled {
+        let (batcher, _receiver) = Batcher::new(config.batch_max_size as usize);
+        Some((batcher, _receiver))
+    } else {
+        None
+    };
+
+    let (batcher_opt, batcher_rx) = match batcher_handle {
+        Some((batcher, receiver)) => (Some(batcher), Some(receiver)),
+        None => (None, None),
+    };
+
     let state = Arc::new(AppState::new(
         pipeline_kind,
         config.model_id.clone(),
         Duration::from_secs(config.request_timeout_secs),
         metrics_handle,
-        None, // Batcher initialized below when batch_enabled=true (Task 2).
+        batcher_opt,
     ));
+
+    // 5b. Spawn batcher background task if batching is enabled (D-06).
+    if let Some(receiver) = batcher_rx {
+        let batcher_state = state.clone();
+        let max_batch_size = config.batch_max_size as usize;
+        let max_wait = Duration::from_millis(config.batch_max_wait_ms);
+        tokio::spawn(batcher_loop(receiver, batcher_state, max_batch_size, max_wait));
+        tracing::info!(
+            batch_max_size = config.batch_max_size,
+            batch_max_wait_ms = config.batch_max_wait_ms,
+            "dynamic batching enabled"
+        );
+    } else {
+        tracing::info!("dynamic batching disabled");
+    }
 
     // 6. Run warmup inference pass (CORE-03), then flip readiness.
     {

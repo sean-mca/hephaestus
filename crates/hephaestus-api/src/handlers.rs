@@ -62,10 +62,29 @@ pub async fn infer(
     // Uses tokio::time::timeout (not tower-http TimeoutLayer) for full
     // control over the 504 response body per Pitfall 4.
     let result = tokio::time::timeout(state.request_timeout(), async {
-        let mut pipeline = state.lock_pipeline().await;
-        let prepared = timer.time("tokenization", || pipeline.prepare(req.text))?;
-        let output = timer.time("inference", || pipeline.execute(prepared))?;
-        Ok::<_, ApiError>(output)
+        if state.is_batching_enabled() {
+            // Batching path (D-06): prepare under lock, drop lock, submit to batcher.
+            // Pipeline mutex is NOT held across the batcher submit await
+            // per rules/anti-lock-across-await.md.
+            let prepared = {
+                let pipeline = state.lock_pipeline().await;
+                timer.time("tokenization", || pipeline.prepare(req.text))?
+            }; // Lock dropped here before submit.
+
+            let output = state
+                .batcher()
+                .expect("batcher must exist when batching is enabled")
+                .submit(prepared)
+                .await
+                .map_err(ApiError::from)?;
+            Ok::<_, ApiError>(output)
+        } else {
+            // Direct path (D-07): prepare + execute under lock. Zero overhead.
+            let mut pipeline = state.lock_pipeline().await;
+            let prepared = timer.time("tokenization", || pipeline.prepare(req.text))?;
+            let output = timer.time("inference", || pipeline.execute(prepared))?;
+            Ok::<_, ApiError>(output)
+        }
     })
     .await;
 

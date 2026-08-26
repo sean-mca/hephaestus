@@ -12,8 +12,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use hephaestus_core::{CoreError, PipelineKind, PreparedInput};
-use tokio::sync::{Mutex, mpsc, oneshot};
+use hephaestus_core::{CoreError, PreparedInput};
+use tokio::sync::{mpsc, oneshot};
+
+use crate::state::AppState;
 
 /// A single inference request queued for batching.
 pub struct BatchRequest {
@@ -98,7 +100,7 @@ impl Batcher {
 /// to handle dropped receivers (HTTP request may have timed out).
 pub async fn batcher_loop(
     mut rx: mpsc::Receiver<BatchRequest>,
-    pipeline: Arc<Mutex<PipelineKind>>,
+    state: Arc<AppState>,
     max_batch_size: usize,
     max_wait: Duration,
 ) {
@@ -144,7 +146,7 @@ pub async fn batcher_loop(
 
         // Lock pipeline only during execute_batch (not during collection).
         let results = {
-            let mut pipeline_guard = pipeline.lock().await;
+            let mut pipeline_guard = state.lock_pipeline().await;
             pipeline_guard.execute_batch(inputs)
         };
         // Pipeline mutex released here.
