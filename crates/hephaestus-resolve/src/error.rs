@@ -69,3 +69,34 @@ pub enum ResolveError {
     #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+impl ResolveError {
+    /// Whether this error is transient and the operation should be retried.
+    ///
+    /// Non-transient errors (auth failures, 404s, missing ONNX exports)
+    /// should not be retried because they will fail identically on every
+    /// attempt. Transient errors (network timeouts, server errors) may
+    /// succeed on retry.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            // Auth and access errors are permanent.
+            Self::HuggingFace(msg) => {
+                let lower = msg.to_lowercase();
+                !(lower.contains("authentication")
+                    || lower.contains("401")
+                    || lower.contains("403")
+                    || lower.contains("404"))
+            }
+            // Model has no ONNX export -- retrying won't help.
+            Self::NoOnnxExport { .. } => false,
+            // Storage "not found" is permanent; other storage errors may be transient.
+            Self::Storage(msg) => !msg.to_lowercase().contains("not found"),
+            // Invalid model IDs and forge unavailability are permanent.
+            Self::InvalidModelId { .. } => false,
+            Self::ForgeUnavailable { .. } => false,
+            // Forge conversion failures and I/O errors may be transient.
+            Self::ForgeConversion { .. } => true,
+            Self::Io(_) => true,
+        }
+    }
+}

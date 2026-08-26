@@ -254,11 +254,30 @@ impl<F: ForgeClient> ModelResolver<F> {
     }
 }
 
+/// Trait for errors that can distinguish transient from permanent failures.
+///
+/// Used by [`with_retry`] to break early on non-transient errors
+/// (auth failures, 404s) instead of wasting retry attempts.
+pub(crate) trait Transient {
+    /// Returns `true` if the error is transient and the operation
+    /// should be retried, `false` if retrying would produce the same error.
+    fn is_transient(&self) -> bool;
+}
+
+impl Transient for ResolveError {
+    fn is_transient(&self) -> bool {
+        ResolveError::is_transient(self)
+    }
+}
+
 /// Generic async retry with exponential backoff (D-05).
 ///
 /// Retries the operation up to `max_attempts` times with exponential
 /// backoff starting from `base_delay`. Each retry is logged at warn
 /// level with attempt number, max_attempts, delay, and error message.
+///
+/// Breaks early on non-transient errors (auth failures, 404s) to
+/// avoid wasting retry attempts on errors that will fail identically.
 pub(crate) async fn with_retry<F, Fut, T, E>(
     max_attempts: u32,
     base_delay: Duration,
@@ -267,14 +286,14 @@ pub(crate) async fn with_retry<F, Fut, T, E>(
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
-    E: std::fmt::Display,
+    E: std::fmt::Display + Transient,
 {
     let mut attempt = 0;
     loop {
         attempt += 1;
         match operation().await {
             Ok(result) => return Ok(result),
-            Err(e) if attempt >= max_attempts => return Err(e),
+            Err(e) if attempt >= max_attempts || !e.is_transient() => return Err(e),
             Err(e) => {
                 let delay = base_delay * 2u32.pow(attempt - 1);
                 tracing::warn!(
@@ -368,7 +387,81 @@ mod tests {
         );
     }
 
+    // --- is_transient tests ---
+
+    #[test]
+    fn is_transient_hf_auth_error() {
+        let err = ResolveError::HuggingFace("Authentication failed: 401".into());
+        assert!(!err.is_transient(), "auth errors should not be transient");
+    }
+
+    #[test]
+    fn is_transient_hf_403_error() {
+        let err = ResolveError::HuggingFace("Access denied: 403 Forbidden".into());
+        assert!(!err.is_transient(), "403 errors should not be transient");
+    }
+
+    #[test]
+    fn is_transient_hf_404_error() {
+        let err = ResolveError::HuggingFace("Repository not found: 404".into());
+        assert!(!err.is_transient(), "404 errors should not be transient");
+    }
+
+    #[test]
+    fn is_transient_hf_network_error() {
+        let err = ResolveError::HuggingFace("connection timed out".into());
+        assert!(err.is_transient(), "network errors should be transient");
+    }
+
+    #[test]
+    fn is_transient_no_onnx_export() {
+        let err = ResolveError::NoOnnxExport {
+            model_id: "test/model".into(),
+        };
+        assert!(!err.is_transient(), "no ONNX export should not be transient");
+    }
+
+    #[test]
+    fn is_transient_storage_not_found() {
+        let err = ResolveError::Storage("object not found".into());
+        assert!(!err.is_transient(), "storage not found should not be transient");
+    }
+
+    #[test]
+    fn is_transient_storage_timeout() {
+        let err = ResolveError::Storage("connection timed out".into());
+        assert!(err.is_transient(), "storage timeout should be transient");
+    }
+
     // --- with_retry tests ---
+
+    /// Test error type that implements Transient (always transient).
+    #[derive(Debug)]
+    struct TransientError(String);
+    impl std::fmt::Display for TransientError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+    impl Transient for TransientError {
+        fn is_transient(&self) -> bool {
+            true
+        }
+    }
+
+    /// Test error type that is never transient.
+    #[derive(Debug)]
+    struct PermanentError(String);
+    impl std::fmt::Display for PermanentError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+    impl Transient for PermanentError {
+        fn is_transient(&self) -> bool {
+            false
+        }
+    }
 
     #[tokio::test]
     async fn retry_retries_specified_number_of_times() {
@@ -378,7 +471,7 @@ mod tests {
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
 
-        let result: Result<(), String> = with_retry(
+        let result: Result<(), TransientError> = with_retry(
             3,
             Duration::from_millis(1),
             move || {
@@ -386,7 +479,7 @@ mod tests {
                 async move {
                     let attempt = c.fetch_add(1, Ordering::SeqCst) + 1;
                     if attempt < 3 {
-                        Err(format!("transient error on attempt {attempt}"))
+                        Err(TransientError(format!("transient error on attempt {attempt}")))
                     } else {
                         Ok(())
                     }
@@ -407,14 +500,14 @@ mod tests {
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
 
-        let result: Result<(), String> = with_retry(
+        let result: Result<(), TransientError> = with_retry(
             3,
             Duration::from_millis(1),
             move || {
                 let c = counter_clone.clone();
                 async move {
                     let attempt = c.fetch_add(1, Ordering::SeqCst) + 1;
-                    Err(format!("persistent error on attempt {attempt}"))
+                    Err(TransientError(format!("persistent error on attempt {attempt}")))
                 }
             },
         )
@@ -424,8 +517,8 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 3);
         let err = result.unwrap_err();
         assert!(
-            err.contains("attempt 3"),
-            "should return last error: {err}"
+            err.0.contains("attempt 3"),
+            "should return last error: {}", err.0
         );
     }
 
@@ -437,7 +530,7 @@ mod tests {
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
 
-        let result: Result<&str, String> = with_retry(
+        let result: Result<&str, TransientError> = with_retry(
             3,
             Duration::from_millis(1),
             move || {
@@ -452,6 +545,36 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn retry_breaks_early_on_non_transient_error() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let counter = Arc::new(AtomicU32::new(0));
+        let counter_clone = counter.clone();
+
+        let result: Result<(), PermanentError> = with_retry(
+            5,
+            Duration::from_millis(1),
+            move || {
+                let c = counter_clone.clone();
+                async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                    Err(PermanentError("auth failure".into()))
+                }
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        // Should have tried only once (non-transient error breaks immediately).
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "non-transient error should not retry"
+        );
     }
 
     // --- Error message tests ---
