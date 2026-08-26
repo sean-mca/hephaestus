@@ -185,6 +185,22 @@ impl Config {
     ///
     /// Returns an error if any configuration value is out of range.
     pub fn validate(&self) -> Result<(), anyhow::Error> {
+        if self.batch_enabled {
+            if self.batch_max_size < 1 || self.batch_max_size > 64 {
+                bail!(
+                    "batch_max_size must be between 1 and 64 (got {})",
+                    self.batch_max_size,
+                );
+            }
+            let timeout_ms = self.request_timeout_secs * 1000;
+            if self.batch_max_wait_ms >= timeout_ms {
+                bail!(
+                    "batch_max_wait_ms ({}) must be less than request_timeout_secs * 1000 ({})",
+                    self.batch_max_wait_ms,
+                    timeout_ms,
+                );
+            }
+        }
         Ok(())
     }
 }

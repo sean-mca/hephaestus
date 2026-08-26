@@ -23,6 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // 1. Load typed configuration from environment variables.
     //    Config must be loaded before tracing init so we can use LOG_LEVEL.
     let config = config::Config::from_env()?;
+    config.validate()?;
 
     // 2. Initialize telemetry: structured JSON logging + conditional OTel export (D-11).
     //    Must be called inside the tokio runtime (after #[tokio::main]) because the
@@ -116,8 +117,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // 5. Build shared state with optional batcher (D-07).
     let batcher_handle = if config.batch_enabled {
-        let (batcher, _receiver) = Batcher::new(config.batch_max_size as usize);
-        Some((batcher, _receiver))
+        let (batcher, receiver) = Batcher::new(config.batch_max_size as usize);
+        Some((batcher, receiver))
     } else {
         None
     };

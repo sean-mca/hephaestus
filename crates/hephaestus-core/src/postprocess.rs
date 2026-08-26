@@ -16,6 +16,9 @@ use crate::pipeline::Entity;
 ///
 /// Returns [`CoreError::Inference`] if `logits` is empty.
 pub(crate) fn softmax(logits: &[f32]) -> Result<Vec<f32>, CoreError> {
+    if logits.is_empty() {
+        return Err(CoreError::Inference("empty logits slice".into()));
+    }
     let max = logits
         .iter()
         .copied()
@@ -33,6 +36,9 @@ pub(crate) fn softmax(logits: &[f32]) -> Result<Vec<f32>, CoreError> {
 ///
 /// Returns [`CoreError::Inference`] if `probs` is empty.
 pub(crate) fn argmax_with_score(probs: &[f32]) -> Result<(usize, f32), CoreError> {
+    if probs.is_empty() {
+        return Err(CoreError::Inference("empty probability slice".into()));
+    }
     Ok(probs
         .iter()
         .enumerate()
@@ -206,7 +212,9 @@ pub(crate) fn merge_subword_entities(
 
     // Merge consecutive words with the same entity type into spans.
     // "O" (outside) labels are skipped.
+    // Track per-entity merge counts for correct arithmetic mean.
     let mut entities: Vec<Entity> = Vec::new();
+    let mut merge_counts: Vec<u32> = Vec::new();
 
     for (label_idx, score, char_start, char_end) in &word_preds {
         let label = id2label
@@ -236,8 +244,11 @@ pub(crate) fn merge_subword_entities(
         if should_extend {
             if let Some(prev) = entities.last_mut() {
                 prev.end = *char_end;
-                // Average scores across merged tokens.
-                prev.score = (prev.score + score) / 2.0;
+                // Accumulate score sum (divided by count after loop).
+                prev.score += score;
+            }
+            if let Some(count) = merge_counts.last_mut() {
+                *count += 1;
             }
         } else {
             entities.push(Entity {
@@ -247,7 +258,13 @@ pub(crate) fn merge_subword_entities(
                 start: *char_start,
                 end: *char_end,
             });
+            merge_counts.push(1);
         }
+    }
+
+    // Compute true arithmetic mean for each entity.
+    for (entity, &count) in entities.iter_mut().zip(merge_counts.iter()) {
+        entity.score /= count as f32;
     }
 
     entities
