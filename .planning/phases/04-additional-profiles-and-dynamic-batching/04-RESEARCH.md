@@ -585,12 +585,11 @@ pub async fn infer(
 | A5 | Pipeline_tag field exists in config.json for sentence-transformer and task-specific models | Pattern 5 (Profile Detection) | pipeline_tag may only be in model card metadata (not config.json); detection would fall back to architectures only |
 | A6 | `*ForMaskedLM` and `*Model` architecture suffixes indicate base encoder models suitable for embeddings | Pattern 5 (Profile Detection) | Some `*Model` architectures may be decoders (GPT2Model); heuristic needs refinement |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Word IDs availability in tokenizers crate**
+1. **Word IDs availability in tokenizers crate** (RESOLVED)
    - What we know: Python tokenizers provides `encoding.word_ids` for subword-to-word mapping
-   - What's unclear: Whether the Rust `tokenizers` crate exposes the same API
-   - Recommendation: Verify at implementation time. Fallback: track `##` prefix for WordPiece, or use `encoding.get_offsets()` to detect word boundaries
+   - Resolution: Verified — `tokenizers` 0.23.1 exposes `Encoding::get_word_ids(&self) -> &[Option<u32>]` at `src/tokenizer/encoding.rs:129`. Plan 04-02's `merge_subword_entities` can use `encoding.get_word_ids()` directly.
 
 2. **Seq2Seq fused model output format**
    - What we know: Optimum can export seq2seq models as single fused ONNX graphs with beam search
