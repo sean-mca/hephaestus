@@ -1,1 +1,13 @@
-//! Model resolution -- Phase 3.
+//! Model resolution for the Hephaestus ONNX inference runtime.
+//!
+//! This crate implements the 3-tier model resolution chain: S3 cache,
+//! HuggingFace Hub, and Forge conversion. Callers interact only through
+//! [`ModelResolver::resolve()`] -- all download, caching, and retry
+//! details are hidden behind this single method (RSLV-05).
+
+pub mod error;
+pub(crate) mod hf;
+pub mod resolver;
+
+pub use error::ResolveError;
+pub use resolver::ModelResolver;
