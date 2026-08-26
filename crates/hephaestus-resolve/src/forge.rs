@@ -98,16 +98,24 @@ impl HttpForgeClient {
     /// * `base_url` - Base URL of the Forge service (e.g., `"http://forge:8080"`).
     ///   Trailing slashes are trimmed.
     /// * `timeout_secs` - Request timeout in seconds (T-05-R02).
-    pub fn new(base_url: &str, timeout_secs: u64) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ResolveError::ForgeConversion`] if the HTTP client cannot
+    /// be built (e.g., TLS backend initialization failure).
+    pub fn new(base_url: &str, timeout_secs: u64) -> Result<Self, ResolveError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
             .build()
-            .expect("failed to build reqwest client");
+            .map_err(|e| ResolveError::ForgeConversion {
+                model_id: String::new(),
+                reason: format!("failed to build HTTP client: {e}"),
+            })?;
 
-        Self {
+        Ok(Self {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
-        }
+        })
     }
 }
 
@@ -200,13 +208,13 @@ mod tests {
 
     #[test]
     fn http_forge_client_stores_base_url() {
-        let client = HttpForgeClient::new("http://forge:8080", 600);
+        let client = HttpForgeClient::new("http://forge:8080", 600).unwrap();
         assert_eq!(client.base_url, "http://forge:8080");
     }
 
     #[test]
     fn http_forge_client_trims_trailing_slash() {
-        let client = HttpForgeClient::new("http://forge:8080/", 600);
+        let client = HttpForgeClient::new("http://forge:8080/", 600).unwrap();
         assert_eq!(client.base_url, "http://forge:8080");
     }
 

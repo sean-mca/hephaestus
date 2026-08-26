@@ -59,7 +59,8 @@ async fn main() -> Result<(), anyhow::Error> {
         // The two branches produce different generic types, so we resolve
         // inside each branch and return the PathBuf.
         if let Some(ref forge_url) = config.forge_url {
-            let forge_client = HttpForgeClient::new(forge_url, config.forge_timeout_secs);
+            let forge_client = HttpForgeClient::new(forge_url, config.forge_timeout_secs)
+                .context("failed to create Forge HTTP client")?;
             let resolver = ModelResolver::new_with_client(
                 config.s3_bucket.as_deref(),
                 config.s3_prefix.as_deref(),
