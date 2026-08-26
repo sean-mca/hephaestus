@@ -158,7 +158,7 @@ impl Config {
         let raw = self
             .model_path
             .as_deref()
-            .context("MODEL_PATH is required (model resolution not yet implemented -- Phase 3)")?;
+            .context("MODEL_PATH is not set and no model was resolved automatically")?;
 
         let path = PathBuf::from(raw);
 
