@@ -53,6 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
             config.s3_prefix.as_deref(),
             config.forge_url.as_deref(),
         )
+        .await
         .context("failed to construct model resolver")?;
 
         resolver
