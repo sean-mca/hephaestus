@@ -6,14 +6,14 @@ current_phase: 08
 current_phase_name: inference-quality-and-concurrency
 status: executing
 stopped_at: Phase 06 context gathered
-last_updated: "2026-08-27T00:43:20.054Z"
+last_updated: "2026-08-27T00:49:13.808Z"
 last_activity: 2026-08-27
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 88
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-26)
 ## Current Position
 
 Phase: 08 (inference-quality-and-concurrency) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-27 — Phase 08 execution started
 
@@ -72,6 +72,7 @@ Progress: [████████████████████] 9/9 pla
 | Phase 06 P02 | 4min | 2 tasks | 4 files |
 | Phase 07 P01 | 8min | 4 tasks | 6 files |
 | Phase 08 P01 | 2min | 2 tasks | 2 files |
+| Phase 08 P02 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,7 @@ Recent decisions affecting current work:
 - [Phase 07]: Transient trait for retry classification instead of string matching in with_retry
 - [Phase 07]: tokio::sync::Notify for shutdown watchdog instead of process::exit
 - [Phase ?]: Retained argmax_per_token with allow(dead_code) for future raw-logit use
+- [Phase ?]: tokio::sync::RwLock for pipeline: read lock for prepare (concurrent tokenization), write lock for execute (exclusive ONNX session access)
 
 ### Roadmap Evolution
 
@@ -154,6 +156,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-27T00:43:01.616Z
+Last session: 2026-08-27T00:49:08.634Z
 Stopped at: Completed 07-01-PLAN.md
 Resume file: None

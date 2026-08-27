@@ -172,7 +172,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
 | 6. OpenDAL Storage Abstraction | 3/3 | Complete   | 2026-08-26 |
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
-| 8. Inference Quality and Concurrency | 1/3 | In Progress|  |
+| 8. Inference Quality and Concurrency | 2/3 | In Progress|  |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -228,13 +228,13 @@ Plans:
   3. Integration test suite downloads real models and verifies inference output for all four profiles (classifier, embeddings, seq2seq, token_classifier)
   4. Dead code in TokenClassifierPipeline::execute is removed
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
 
 - [x] 08-01-PLAN.md — NER score normalization fix (softmax per-token) and dead code removal
-- [ ] 08-02-PLAN.md — Pipeline mutex split: Mutex to RwLock for concurrent tokenization
+- [x] 08-02-PLAN.md — Pipeline mutex split: Mutex to RwLock for concurrent tokenization
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
