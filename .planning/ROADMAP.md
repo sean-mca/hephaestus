@@ -172,7 +172,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
 | 6. OpenDAL Storage Abstraction | 3/3 | Complete   | 2026-08-26 |
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
-| 8. Inference Quality and Concurrency | 0/0 | Not started | — |
+| 8. Inference Quality and Concurrency | 0/3 | Planned | — |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
