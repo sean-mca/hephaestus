@@ -161,7 +161,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -173,6 +173,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. OpenDAL Storage Abstraction | 3/3 | Complete   | 2026-08-26 |
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
 | 8. Inference Quality and Concurrency | 3/3 | Complete   | 2026-08-27 |
+| 9. GPU Acceleration & TensorRT Engine Pipeline | 0/0 | Not started | — |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -239,3 +240,23 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 08-03-PLAN.md — Integration tests with real HuggingFace models for classifier, embeddings, and token classifier
+
+### Phase 9: GPU Acceleration & TensorRT Engine Pipeline
+
+**Goal:** Add CUDA and TensorRT execution provider support with a lean runtime serving image, engine compilation CLI mode, and S3 engine caching — enabling operators to optionally deploy on GPU nodes for 5-10x inference speedup while keeping the CPU-only flow unchanged
+**Depends on:** Phase 8
+**Success Criteria** (what must be TRUE):
+
+  1. Hephaestus runs inference on CUDA GPUs when EXECUTION_PROVIDER=cuda, with no code changes to pipelines or pre/post-processing
+  2. TensorRT EP compiles ONNX graphs into optimized engines and caches compiled engines to S3 keyed by model_id/gpu_arch/trt_version
+  3. `hephaestus compile` subcommand compiles a TensorRT engine for a given model and uploads it to S3
+  4. `hephaestus await-engine` subcommand polls S3 until a compiled engine exists, then exits 0 (for use as init container)
+  5. Multi-stage Dockerfile produces three image variants: `latest` (CPU, ~50MB), `gpu-lean` (CUDA+TRT lean runtime, <1GB), `gpu-compiler` (full TRT for compilation)
+  6. Helm chart supports GPU node selector and optional init container for pre-compiled engine flow
+  7. CPU-only deployments (EXECUTION_PROVIDER=cpu) work identically to Phase 8 with no new dependencies
+
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 9 to break down)
