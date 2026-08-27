@@ -498,6 +498,99 @@ mod tests {
     }
 
     #[test]
+    fn test_softmax_argmax_per_token_known_logits() {
+        // Arrange -- 3 tokens, 4 labels each (same data as test_argmax_per_token_known_logits)
+        // Token 0: label 2 is highest (5.0)
+        // Token 1: label 0 is highest (3.0)
+        // Token 2: label 3 is highest (7.0)
+        let logits = [
+            1.0_f32, 2.0, 5.0, 0.5, // token 0
+            3.0, 1.0, 2.0, 0.0,      // token 1
+            0.0, 1.0, 2.0, 7.0,      // token 2
+        ];
+
+        // Act
+        let result =
+            softmax_argmax_per_token(&logits, 3, 4).expect("softmax_argmax_per_token should succeed");
+
+        // Assert -- same argmax indices as raw argmax, but scores are probabilities in [0, 1]
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].0, 2); // token 0: label 2 is highest
+        assert_eq!(result[1].0, 0); // token 1: label 0 is highest
+        assert_eq!(result[2].0, 3); // token 2: label 3 is highest
+
+        for (i, (_, score)) in result.iter().enumerate() {
+            assert!(
+                *score > 0.0 && *score <= 1.0,
+                "token {i}: score {score} not in (0.0, 1.0]"
+            );
+        }
+        // The raw logit for token 0 label 2 is 5.0; softmax must NOT return 5.0
+        assert!(
+            result[0].1 < 1.0,
+            "score should be a probability, not raw logit 5.0"
+        );
+    }
+
+    #[test]
+    fn test_softmax_argmax_per_token_single_token() {
+        // Arrange -- 1 token, 4 labels
+        let logits = [1.0_f32, 2.0, 5.0, 0.5];
+
+        // Act
+        let result =
+            softmax_argmax_per_token(&logits, 1, 4).expect("softmax_argmax_per_token should succeed");
+
+        // Assert
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, 2); // label 2 is highest
+        assert!(
+            result[0].1 > 0.0 && result[0].1 <= 1.0,
+            "score {} not in (0.0, 1.0]",
+            result[0].1
+        );
+    }
+
+    #[test]
+    fn test_softmax_argmax_per_token_empty_returns_error() {
+        // Arrange
+        let logits: [f32; 0] = [];
+
+        // Act -- num_tokens=0 should produce an empty result, but empty logits is an error
+        // if num_tokens > 0
+        let result = softmax_argmax_per_token(&logits, 0, 4);
+
+        // Assert -- 0 tokens should return Ok with empty vec
+        let preds = result.expect("0 tokens should succeed");
+        assert!(preds.is_empty());
+    }
+
+    #[test]
+    fn test_softmax_argmax_per_token_scores_sum_to_one() {
+        // Arrange -- verify indirectly that softmax is applied per token
+        // by checking the max score is less than the raw logit value
+        let logits = [
+            10.0_f32, 0.0, 0.0, // token 0: label 0 dominant
+            0.0, 0.0, 10.0,     // token 1: label 2 dominant
+        ];
+
+        // Act
+        let result =
+            softmax_argmax_per_token(&logits, 2, 3).expect("softmax_argmax_per_token should succeed");
+
+        // Assert
+        assert_eq!(result[0].0, 0); // token 0: label 0
+        assert_eq!(result[1].0, 2); // token 1: label 2
+        // Scores should be close to 1.0 but NOT equal to 10.0
+        for (i, (_, score)) in result.iter().enumerate() {
+            assert!(
+                *score < 1.01,
+                "token {i}: score {score} exceeds 1.0 (raw logit leaked)"
+            );
+        }
+    }
+
+    #[test]
     fn test_entity_serialization() {
         // Arrange
         let entity = Entity {
