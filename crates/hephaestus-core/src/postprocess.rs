@@ -83,11 +83,11 @@ pub(crate) fn mean_pool(
     let mut pooled = vec![0.0_f32; hidden_dim];
     let mut mask_sum = 0.0_f32;
 
-    for t in 0..seq_len {
-        let mask_val = attention_mask[t] as f32;
+    for (chunk, &mask) in token_embeddings.chunks_exact(hidden_dim).zip(attention_mask.iter()) {
+        let mask_val = mask as f32;
         mask_sum += mask_val;
-        for d in 0..hidden_dim {
-            pooled[d] += token_embeddings[t * hidden_dim + d] * mask_val;
+        for (p, &emb) in pooled.iter_mut().zip(chunk.iter()) {
+            *p += emb * mask_val;
         }
     }
 

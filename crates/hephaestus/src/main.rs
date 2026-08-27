@@ -69,7 +69,8 @@ async fn main() -> Result<(), anyhow::Error> {
         // For cloud backends: STORAGE_PREFIX becomes "/{prefix}" root.
         if config.storage_type == "fs" {
             // validate() ensures storage_root is Some for fs.
-            let root = config.storage_root.as_deref().unwrap();
+            let root = config.storage_root.as_deref()
+                .context("storage_root is required when storage_type is fs")?;
             match config.storage_prefix.as_deref() {
                 Some(prefix) => cfg.insert("root".to_string(), format!("{root}/{prefix}")),
                 None => cfg.insert("root".to_string(), root.to_string()),

@@ -73,7 +73,7 @@ pub async fn infer(
 
             let output = state
                 .batcher()
-                .expect("batcher must exist when batching is enabled")
+                .ok_or(ApiError::Internal("batcher not available".to_string()))?
                 .submit(prepared)
                 .await
                 .map_err(ApiError::from)?;

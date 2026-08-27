@@ -87,14 +87,17 @@ pub(crate) async fn download_from_hf(
         if onnx_path.parent().and_then(|p| p.file_name()) == Some(std::ffi::OsStr::new("onnx")) {
             onnx_path
                 .parent()
-                .expect("onnx/model.onnx should have parent (onnx/)")
-                .parent()
-                .expect("onnx/ should have parent (snapshot root)")
+                .and_then(|p| p.parent())
+                .ok_or_else(|| ResolveError::HuggingFace(
+                    format!("unexpected ONNX path structure: {}", onnx_path.display()),
+                ))?
                 .to_path_buf()
         } else {
             onnx_path
                 .parent()
-                .expect("model.onnx should have parent (snapshot root)")
+                .ok_or_else(|| ResolveError::HuggingFace(
+                    format!("ONNX file has no parent directory: {}", onnx_path.display()),
+                ))?
                 .to_path_buf()
         };
 
