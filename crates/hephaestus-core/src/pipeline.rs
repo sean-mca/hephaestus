@@ -644,31 +644,12 @@ impl Pipeline for TokenClassifierPipeline {
             )));
         };
 
-        // Per-token argmax to get predicted label indices and scores.
-        let predictions = postprocess::argmax_per_token(data, num_tokens, num_labels)?;
+        // Per-token softmax + argmax to get predicted label indices and probability scores.
+        let predictions = postprocess::softmax_argmax_per_token(data, num_tokens, num_labels)?;
 
         // Merge subword tokens into word-level entity spans.
         let mut entities =
             postprocess::merge_subword_entities(&predictions, encoding, &self.id2label);
-
-        // Fill in the word text from the original input using character offsets.
-        let original_text: &str = encoding
-            .get_tokens()
-            .first()
-            .map(|_| {
-                // We can reconstruct from offsets by decoding the original sequence.
-                // The encoding preserves offsets into the original string.
-                ""
-            })
-            .unwrap_or("");
-
-        // Use the encoding's offsets to reconstruct words from the tokenizer's
-        // normalized input. The tokenizer may have lowercased, so we use decode.
-        // For simplicity, reconstruct from the token strings.
-        // Actually, encoding.get_offsets() gives (start, end) into the original string.
-        // But we don't have the original string anymore. Instead, reconstruct from tokens.
-        // The cleanest approach: use the encoding to decode token spans.
-        let _ = original_text; // unused, we reconstruct from tokens below
 
         for entity in &mut entities {
             // Decode the token IDs corresponding to this entity's char span.
@@ -1128,7 +1109,7 @@ fn batch_postprocess_token_classifier(
             let num_tokens = prepared.sequence_length;
             let sample_start = i * max_seq_len * num_labels;
             let sample_data = &data[sample_start..sample_start + num_tokens * num_labels];
-            let predictions = postprocess::argmax_per_token(sample_data, num_tokens, num_labels)?;
+            let predictions = postprocess::softmax_argmax_per_token(sample_data, num_tokens, num_labels)?;
 
             let encoding = match &prepared.encoding {
                 Some(enc) => enc,

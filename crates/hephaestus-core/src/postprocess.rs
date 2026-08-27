@@ -132,6 +132,7 @@ pub(crate) fn l2_normalize(v: &mut [f32]) {
 /// # Errors
 ///
 /// Returns [`CoreError::Inference`] if any per-token argmax fails.
+#[allow(dead_code)] // Retained for raw-logit argmax if needed; production path uses softmax_argmax_per_token.
 pub(crate) fn argmax_per_token(
     logits: &[f32],
     num_tokens: usize,
