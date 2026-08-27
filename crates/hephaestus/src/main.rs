@@ -213,23 +213,31 @@ async fn main() -> Result<(), anyhow::Error> {
             .warmup_input
             .as_deref()
             .unwrap_or("This is a warmup inference pass.");
-        let mut pipeline = state.lock_pipeline().await;
-        match pipeline.prepare(warmup_text.to_string()) {
-            Ok(prepared) => match pipeline.execute(prepared) {
-                Ok(_output) => {
-                    tracing::info!(
-                        model_id = %config.model_id,
-                        "warmup inference complete"
-                    );
+        // Read lock for prepare (tokenization), write lock for execute (inference).
+        // Mirrors the handler's read/write split pattern (SC-02).
+        let prepared = {
+            let pipeline = state.read_pipeline().await;
+            pipeline.prepare(warmup_text.to_string())
+        };
+        match prepared {
+            Ok(prepared) => {
+                let mut pipeline = state.write_pipeline().await;
+                match pipeline.execute(prepared) {
+                    Ok(_output) => {
+                        tracing::info!(
+                            model_id = %config.model_id,
+                            "warmup inference complete"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            model_id = %config.model_id,
+                            error = %e,
+                            "warmup inference failed, continuing without warmup"
+                        );
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        model_id = %config.model_id,
-                        error = %e,
-                        "warmup inference failed, continuing without warmup"
-                    );
-                }
-            },
+            }
             Err(e) => {
                 tracing::warn!(
                     model_id = %config.model_id,

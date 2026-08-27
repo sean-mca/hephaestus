@@ -144,12 +144,12 @@ pub async fn batcher_loop(
             replies.push(req.reply);
         }
 
-        // Lock pipeline only during execute_batch (not during collection).
+        // Write-lock pipeline only during execute_batch (not during collection).
         let results = {
-            let mut pipeline_guard = state.lock_pipeline().await;
+            let mut pipeline_guard = state.write_pipeline().await;
             pipeline_guard.execute_batch(inputs)
         };
-        // Pipeline mutex released here.
+        // Pipeline write lock released here.
 
         // Fan results back to individual requests.
         for (reply, result) in replies.into_iter().zip(results) {

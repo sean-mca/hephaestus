@@ -63,13 +63,13 @@ pub async fn infer(
     // control over the 504 response body per Pitfall 4.
     let result = tokio::time::timeout(state.request_timeout(), async {
         if state.is_batching_enabled() {
-            // Batching path (D-06): prepare under lock, drop lock, submit to batcher.
-            // Pipeline mutex is NOT held across the batcher submit await
+            // Batching path (D-06): prepare under read lock, drop lock, submit to batcher.
+            // Pipeline RwLock is NOT held across the batcher submit await
             // per rules/anti-lock-across-await.md.
             let prepared = {
-                let pipeline = state.lock_pipeline().await;
+                let pipeline = state.read_pipeline().await;
                 timer.time("tokenization", || pipeline.prepare(req.text))?
-            }; // Lock dropped here before submit.
+            }; // Read lock dropped here before submit.
 
             let output = state
                 .batcher()
@@ -79,10 +79,17 @@ pub async fn infer(
                 .map_err(ApiError::from)?;
             Ok::<_, ApiError>(output)
         } else {
-            // Direct path (D-07): prepare + execute under lock. Zero overhead.
-            let mut pipeline = state.lock_pipeline().await;
-            let prepared = timer.time("tokenization", || pipeline.prepare(req.text))?;
-            let output = timer.time("inference", || pipeline.execute(prepared))?;
+            // Direct path (D-07): read lock for prepare, write lock for execute.
+            // Splitting the lock allows other requests to tokenize concurrently
+            // while only inference holds exclusive access (SC-02).
+            let prepared = {
+                let pipeline = state.read_pipeline().await;
+                timer.time("tokenization", || pipeline.prepare(req.text))?
+            }; // Read lock dropped here.
+            let output = {
+                let mut pipeline = state.write_pipeline().await;
+                timer.time("inference", || pipeline.execute(prepared))?
+            }; // Write lock dropped here.
             Ok::<_, ApiError>(output)
         }
     })
