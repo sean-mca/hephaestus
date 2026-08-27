@@ -259,43 +259,39 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let app = build_router(state.clone());
 
-    // Spawn drain-timeout watchdog (D-13).
+    // Drain-timeout watchdog (D-13).
     //
-    // Uses a Notify instead of std::process::exit(1) so destructors
-    // and OTel shutdown run cleanly when the drain timeout expires.
-    let force_shutdown = Arc::new(tokio::sync::Notify::new());
+    // The serve future uses `with_graceful_shutdown` to begin draining
+    // on SIGTERM/Ctrl-C.  A `select!` on the serve future itself acts
+    // as the hard-kill safety net: if in-flight connections do not
+    // close within `shutdown_timeout` after readiness flips to false,
+    // the watchdog branch completes and the serve future is cancelled.
     let shutdown_timeout = Duration::from_secs(config.shutdown_timeout_secs);
-    let watchdog_state = state.clone();
-    let watchdog_notify = force_shutdown.clone();
-    tokio::spawn(async move {
-        // Wait until readiness is flipped to false (shutdown signal received).
-        loop {
-            if !watchdog_state.is_ready() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-        // Grace period for in-flight requests to drain.
-        tokio::time::sleep(shutdown_timeout).await;
-        tracing::warn!(
-            timeout_secs = shutdown_timeout.as_secs(),
-            "drain timeout exceeded, forcing server shutdown"
-        );
-        watchdog_notify.notify_one();
-    });
-
-    // Graceful shutdown waits for either the OS signal or the watchdog timeout.
-    let server_notify = force_shutdown.clone();
     let server_state = state.clone();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            tokio::select! {
-                () = shutdown_signal(server_state) => {},
-                () = server_notify.notified() => {},
+    let watchdog_state = state.clone();
+    let serve_fut = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(server_state));
+
+    tokio::select! {
+        result = serve_fut => {
+            result.context("HTTP server error")?;
+        }
+        () = async {
+            // Poll until readiness is flipped to false (shutdown signal received).
+            loop {
+                if !watchdog_state.is_ready() { break; }
+                tokio::time::sleep(Duration::from_millis(200)).await;
             }
-        })
-        .await
-        .context("HTTP server error")?;
+            // Grace period for in-flight requests to drain.
+            tokio::time::sleep(shutdown_timeout).await;
+            tracing::warn!(
+                timeout_secs = shutdown_timeout.as_secs(),
+                "drain timeout exceeded, forcing shutdown"
+            );
+        } => {
+            // serve_fut is cancelled -- server stops immediately.
+        }
+    }
 
     tracing::info!("server shut down");
 
