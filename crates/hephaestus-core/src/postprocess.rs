@@ -270,8 +270,11 @@ pub(crate) fn merge_subword_entities(
     // Merge consecutive words with the same entity type into spans.
     // "O" (outside) labels are skipped.
     // Track per-entity merge counts for correct arithmetic mean.
+    // `prev_was_entity` ensures I-tags after O-tags start new entities
+    // per standard BIO convention (matching HuggingFace transformers).
     let mut entities: Vec<Entity> = Vec::new();
     let mut merge_counts: Vec<u32> = Vec::new();
+    let mut prev_was_entity = false;
 
     for (label_idx, score, char_start, char_end) in &word_preds {
         let label = id2label
@@ -286,14 +289,18 @@ pub(crate) fn merge_subword_entities(
             label
         };
 
-        // Skip "O" (outside) labels.
+        // Skip "O" (outside) labels -- break the entity chain.
         if etype == "O" {
+            prev_was_entity = false;
             continue;
         }
 
         // If this is a B- tag or a different entity type, start a new entity.
-        // If this is an I- tag matching the previous entity type, extend it.
-        let should_extend = label.starts_with("I-")
+        // If this is an I- tag matching the previous entity type AND the
+        // previous word was part of the entity chain, extend it. An I-tag
+        // after an O-tag starts a new entity per BIO convention.
+        let should_extend = prev_was_entity
+            && label.starts_with("I-")
             && entities
                 .last()
                 .is_some_and(|prev| prev.entity == etype);
@@ -317,6 +324,7 @@ pub(crate) fn merge_subword_entities(
             });
             merge_counts.push(1);
         }
+        prev_was_entity = true;
     }
 
     // Compute true arithmetic mean for each entity.
