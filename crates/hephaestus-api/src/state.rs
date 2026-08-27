@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use hephaestus_core::PipelineKind;
 use metrics_exporter_prometheus::PrometheusHandle;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::batcher::Batcher;
 
@@ -20,9 +20,13 @@ use crate::batcher::Batcher;
 /// to enforce the Ousterhout deep-module principle -- callers interact
 /// through controlled accessors rather than reaching into internals.
 pub struct AppState {
-    /// The inference pipeline, guarded by a tokio Mutex
-    /// because [`PipelineKind::execute`] requires `&mut self`.
-    pipeline: Mutex<PipelineKind>,
+    /// The inference pipeline, guarded by a tokio RwLock.
+    ///
+    /// Read lock: [`PipelineKind::prepare`] takes `&self` (tokenization only).
+    /// Write lock: [`PipelineKind::execute`] requires `&mut self` (ONNX session).
+    /// This allows concurrent tokenization across requests while serializing
+    /// inference (SC-02).
+    pipeline: RwLock<PipelineKind>,
 
     /// Readiness flag. Starts `false`; flipped to `true` after the
     /// warmup inference pass succeeds (D-05). On SIGTERM, flipped
@@ -59,7 +63,7 @@ impl AppState {
         batcher: Option<Batcher>,
     ) -> Self {
         Self {
-            pipeline: Mutex::new(pipeline),
+            pipeline: RwLock::new(pipeline),
             ready: AtomicBool::new(false),
             model_id,
             start_time: Instant::now(),
@@ -99,9 +103,22 @@ impl AppState {
         self.metrics_handle.render()
     }
 
-    /// Acquire an exclusive lock on the inference pipeline.
-    pub async fn lock_pipeline(&self) -> tokio::sync::MutexGuard<'_, PipelineKind> {
-        self.pipeline.lock().await
+    /// Acquire a shared read lock on the inference pipeline.
+    ///
+    /// Used for [`PipelineKind::prepare`] which takes `&self` (tokenization).
+    /// Multiple concurrent readers are allowed, enabling parallel tokenization
+    /// across requests (SC-02).
+    pub async fn read_pipeline(&self) -> tokio::sync::RwLockReadGuard<'_, PipelineKind> {
+        self.pipeline.read().await
+    }
+
+    /// Acquire an exclusive write lock on the inference pipeline.
+    ///
+    /// Used for [`PipelineKind::execute`] and [`PipelineKind::execute_batch`]
+    /// which take `&mut self` (ONNX session mutation). Only one writer at a
+    /// time; blocks all readers while held.
+    pub async fn write_pipeline(&self) -> tokio::sync::RwLockWriteGuard<'_, PipelineKind> {
+        self.pipeline.write().await
     }
 
     /// Check whether dynamic batching is enabled.
