@@ -92,7 +92,7 @@ impl Batcher {
 ///
 /// Waits for the first request, then collects additional requests
 /// until either `max_batch_size` is reached or `max_wait` elapses.
-/// Locks the pipeline mutex only during `execute_batch` -- never
+/// Write-locks the pipeline RwLock only during `execute_batch` -- never
 /// during the collection phase per [`rules/anti-lock-across-await.md`].
 ///
 /// On any `execute_batch` failure, the error is sent to ALL pending

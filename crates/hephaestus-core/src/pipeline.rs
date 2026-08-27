@@ -678,7 +678,7 @@ impl Pipeline for TokenClassifierPipeline {
 
 /// Enum dispatch wrapper for all pipeline types (D-03).
 ///
-/// `AppState` holds `Mutex<PipelineKind>` instead of a concrete pipeline.
+/// `AppState` holds `RwLock<PipelineKind>` instead of a concrete pipeline.
 /// The handler matches on the variant to dispatch prepare/execute calls.
 /// No trait objects, no dynamic dispatch overhead.
 pub enum PipelineKind {
