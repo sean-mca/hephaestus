@@ -153,6 +153,51 @@ pub(crate) fn argmax_per_token(
         .collect()
 }
 
+/// Compute per-token softmax + argmax over a flattened logits tensor.
+///
+/// Like [`argmax_per_token`], but applies [`softmax`] to each token's
+/// logit slice before taking the argmax.  The returned scores are
+/// therefore probabilities in `[0.0, 1.0]` instead of raw logits.
+///
+/// # Arguments
+///
+/// - `logits` -- flattened `(num_tokens, num_labels)` tensor.
+/// - `num_tokens` -- number of tokens in the sequence.
+/// - `num_labels` -- number of labels (classes) per token.
+///
+/// # Returns
+///
+/// A vector of `(label_index, probability)` tuples, one per token.
+///
+/// # Errors
+///
+/// Returns [`CoreError::Inference`] if the softmax or argmax step fails
+/// for any token.
+pub(crate) fn softmax_argmax_per_token(
+    logits: &[f32],
+    num_tokens: usize,
+    num_labels: usize,
+) -> Result<Vec<(usize, f32)>, CoreError> {
+    if num_tokens == 0 {
+        return Ok(Vec::new());
+    }
+    assert_eq!(
+        logits.len(),
+        num_tokens * num_labels,
+        "logits length must equal num_tokens * num_labels"
+    );
+    assert!(num_labels > 0, "num_labels must be positive");
+
+    (0..num_tokens)
+        .map(|t| {
+            let start = t * num_labels;
+            let token_logits = &logits[start..start + num_labels];
+            let probs = softmax(token_logits)?;
+            argmax_with_score(&probs)
+        })
+        .collect()
+}
+
 /// Merge subword token predictions into word-level entity spans.
 ///
 /// Uses the tokenizer encoding's word IDs to group subword tokens
