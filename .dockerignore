@@ -1,0 +1,8 @@
+target/
+forge/
+.git/
+.planning/
+.claude/
+*.md
+!crates/**/Cargo.toml
+Makefile
