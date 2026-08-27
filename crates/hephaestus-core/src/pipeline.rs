@@ -446,7 +446,7 @@ impl Pipeline for EmbeddingsPipeline {
         };
 
         // Mean pool over token dimension using attention mask.
-        let mut pooled = postprocess::mean_pool(data, &attention_mask, hidden_dim);
+        let mut pooled = postprocess::mean_pool(data, &attention_mask, hidden_dim)?;
 
         // L2 normalize to unit vector.
         postprocess::l2_normalize(&mut pooled);
@@ -985,7 +985,7 @@ fn batch_postprocess_embeddings(
             let sample_data = &data[sample_start..sample_end];
             let sample_mask = attention_mask_array.row(i);
             let mask_vec: Vec<i64> = sample_mask.to_vec();
-            let mut pooled = postprocess::mean_pool(sample_data, &mask_vec, hidden_dim);
+            let mut pooled = postprocess::mean_pool(sample_data, &mask_vec, hidden_dim)?;
             postprocess::l2_normalize(&mut pooled);
             Ok(serde_json::json!({ "embedding": pooled }))
         })

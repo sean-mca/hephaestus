@@ -64,20 +64,21 @@ pub(crate) fn argmax_with_score(probs: &[f32]) -> Result<(usize, f32), CoreError
 /// - `attention_mask` -- `(seq_len,)` vector with 1 for real tokens, 0 for padding.
 /// - `hidden_dim` -- size of each token's embedding vector.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if `token_embeddings.len() != attention_mask.len() * hidden_dim`.
+/// Returns [`CoreError::Inference`] if `token_embeddings.len() != seq_len * hidden_dim`.
 pub(crate) fn mean_pool(
     token_embeddings: &[f32],
     attention_mask: &[i64],
     hidden_dim: usize,
-) -> Vec<f32> {
+) -> Result<Vec<f32>, CoreError> {
     let seq_len = attention_mask.len();
-    assert_eq!(
-        token_embeddings.len(),
-        seq_len * hidden_dim,
-        "token_embeddings length must equal seq_len * hidden_dim"
-    );
+    if token_embeddings.len() != seq_len * hidden_dim {
+        return Err(CoreError::Inference(format!(
+            "token_embeddings length {} != seq_len ({}) * hidden_dim ({})",
+            token_embeddings.len(), seq_len, hidden_dim,
+        )));
+    }
 
     let mut pooled = vec![0.0_f32; hidden_dim];
     let mut mask_sum = 0.0_f32;
@@ -94,7 +95,7 @@ pub(crate) fn mean_pool(
     for val in &mut pooled {
         *val /= denom;
     }
-    pooled
+    Ok(pooled)
 }
 
 /// L2-normalize a vector to unit length in-place.
@@ -138,12 +139,17 @@ pub(crate) fn argmax_per_token(
     num_tokens: usize,
     num_labels: usize,
 ) -> Result<Vec<(usize, f32)>, CoreError> {
-    assert_eq!(
-        logits.len(),
-        num_tokens * num_labels,
-        "logits length must equal num_tokens * num_labels"
-    );
-    assert!(num_labels > 0, "num_labels must be positive");
+    if num_labels == 0 {
+        return Err(CoreError::Inference(
+            "num_labels must be positive".into(),
+        ));
+    }
+    if logits.len() != num_tokens * num_labels {
+        return Err(CoreError::Inference(format!(
+            "logits length {} does not equal num_tokens ({}) * num_labels ({})",
+            logits.len(), num_tokens, num_labels,
+        )));
+    }
 
     (0..num_tokens)
         .map(|t| {
@@ -182,12 +188,17 @@ pub(crate) fn softmax_argmax_per_token(
     if num_tokens == 0 {
         return Ok(Vec::new());
     }
-    assert_eq!(
-        logits.len(),
-        num_tokens * num_labels,
-        "logits length must equal num_tokens * num_labels"
-    );
-    assert!(num_labels > 0, "num_labels must be positive");
+    if num_labels == 0 {
+        return Err(CoreError::Inference(
+            "num_labels must be positive".into(),
+        ));
+    }
+    if logits.len() != num_tokens * num_labels {
+        return Err(CoreError::Inference(format!(
+            "logits length {} does not equal num_tokens ({}) * num_labels ({})",
+            logits.len(), num_tokens, num_labels,
+        )));
+    }
 
     (0..num_tokens)
         .map(|t| {
@@ -439,7 +450,7 @@ mod tests {
         let hidden_dim = 2;
 
         // Act
-        let pooled = mean_pool(&embeddings, &mask, hidden_dim);
+        let pooled = mean_pool(&embeddings, &mask, hidden_dim).expect("mean_pool should succeed");
 
         // Assert -- mean of first two tokens only: [(1+3)/2, (2+4)/2] = [2.0, 3.0]
         assert_eq!(pooled.len(), hidden_dim);
@@ -463,7 +474,7 @@ mod tests {
         let hidden_dim = 3;
 
         // Act
-        let pooled = mean_pool(&embeddings, &mask, hidden_dim);
+        let pooled = mean_pool(&embeddings, &mask, hidden_dim).expect("mean_pool should succeed");
 
         // Assert -- mean of one token is the token itself
         assert!((pooled[0] - 0.5).abs() < 1e-6);
