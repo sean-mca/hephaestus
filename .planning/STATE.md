@@ -123,6 +123,10 @@ Recent decisions affecting current work:
 - [Phase 07]: Transient trait for retry classification instead of string matching in with_retry
 - [Phase 07]: tokio::sync::Notify for shutdown watchdog instead of process::exit
 
+### Roadmap Evolution
+
+- Phase 8 added: Inference Quality and Concurrency (NER score bug, mutex split, integration tests)
+
 ### Pending Todos
 
 None yet.

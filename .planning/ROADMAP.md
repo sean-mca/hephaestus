@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching (completed 2026-08-26)
 - [x] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format (completed 2026-08-26)
 - [x] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry (completed 2026-08-26)
+- [ ] **Phase 8: Inference Quality and Concurrency** - NER score normalization, pipeline mutex split for concurrent tokenization, real integration tests
 
 ## Phase Details
 
@@ -160,7 +161,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -171,6 +172,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
 | 6. OpenDAL Storage Abstraction | 3/3 | Complete   | 2026-08-26 |
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
+| 8. Inference Quality and Concurrency | 0/0 | Not started | — |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -214,3 +216,20 @@ Plans:
 **Wave 1**
 
 - [x] 07-01-PLAN.md — token_type_ids support, body limits, resilient warmup/shutdown, smart retry
+
+### Phase 8: Inference Quality and Concurrency
+
+**Goal:** Fix NER score normalization bug, split pipeline mutex to allow concurrent tokenization, and add real integration tests that download models and verify end-to-end inference
+**Depends on:** Phase 7
+**Success Criteria** (what must be TRUE):
+
+  1. Token classifier pipeline returns softmax-normalized scores in [0,1] matching classifier pipeline behavior
+  2. Tokenization runs concurrently across requests without holding the inference mutex
+  3. Integration test suite downloads real models and verifies inference output for all four profiles (classifier, embeddings, seq2seq, token_classifier)
+  4. Dead code in TokenClassifierPipeline::execute is removed
+
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 8 to break down)
