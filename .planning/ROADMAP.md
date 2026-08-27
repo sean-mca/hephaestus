@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Additional Profiles and Dynamic Batching** - Embeddings, seq2seq, and NER model types with optional request batching (completed 2026-08-26)
 - [x] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format (completed 2026-08-26)
 - [x] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry (completed 2026-08-26)
-- [ ] **Phase 8: Inference Quality and Concurrency** - NER score normalization, pipeline mutex split for concurrent tokenization, real integration tests
+- [x] **Phase 8: Inference Quality and Concurrency** - NER score normalization, pipeline mutex split for concurrent tokenization, real integration tests (completed 2026-08-27)
 
 ## Phase Details
 
@@ -172,7 +172,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Forge Conversion Service | 2/2 | Complete    | 2026-08-26 |
 | 6. OpenDAL Storage Abstraction | 3/3 | Complete   | 2026-08-26 |
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
-| 8. Inference Quality and Concurrency | 2/3 | In Progress|  |
+| 8. Inference Quality and Concurrency | 3/3 | Complete   | 2026-08-27 |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -228,7 +228,7 @@ Plans:
   3. Integration test suite downloads real models and verifies inference output for all four profiles (classifier, embeddings, seq2seq, token_classifier)
   4. Dead code in TokenClassifierPipeline::execute is removed
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
@@ -238,4 +238,4 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-03-PLAN.md — Integration tests with real HuggingFace models for classifier, embeddings, and token classifier
+- [x] 08-03-PLAN.md — Integration tests with real HuggingFace models for classifier, embeddings, and token classifier
