@@ -9,7 +9,7 @@ A unified ONNX model inference runtime in Rust — one container that loads, ser
 - **Backend-agnostic storage** — S3, GCS, Azure Blob, local filesystem via [Apache OpenDAL](https://github.com/apache/opendal)
 - **Forge conversion service** — companion Python service converts non-ONNX HuggingFace models to ONNX format
 - **One model per pod** — configured via environment variables, scales with Kubernetes natively
-- **CPU + GPU support** — toggle execution provider via config, not architecture changes
+- **CPU + GPU support** — toggle execution provider via env var; compile with `--features cuda` for GPU acceleration
 - **Atomic model caching** — temp-dir-then-rename pattern prevents partial downloads from being served
 - **Full pre/post-processing** — tokenization, inference, and output decoding in one binary (callers send text, get predictions)
 - **Observability built in** — Prometheus metrics, OpenTelemetry tracing, structured JSON logs
@@ -62,6 +62,21 @@ cargo build --workspace
 cargo test --workspace
 ```
 
+### Build with GPU support
+
+```bash
+# NVIDIA CUDA
+cargo build --workspace --features cuda
+
+# NVIDIA TensorRT (optimized inference)
+cargo build --workspace --features tensorrt
+
+# Apple CoreML (macOS)
+cargo build --workspace --features coreml
+```
+
+GPU execution providers fall back to CPU gracefully at runtime if the hardware isn't available. Requesting a GPU provider without the matching cargo feature produces a clear error at startup.
+
 ### Run inference
 
 ```bash
@@ -98,12 +113,13 @@ hephaestus/
 │   │       └── config.rs               # Env var config (MODEL_ID, STORAGE_*, etc.)
 │   ├── hephaestus-core/                # Inference engine — pipelines, profiles, post-processing
 │   │   └── src/
-│   │       ├── pipeline.rs             # Pipeline trait (deep module: one process() method)
-│   │       ├── profile.rs              # Model type profiles (classifier, embeddings, etc.)
-│   │       └── postprocess.rs          # Softmax, argmax, label mapping
+│   │       ├── pipeline.rs             # Pipeline trait + all profile implementations
+│   │       ├── profile.rs              # Model type detection from config.json
+│   │       ├── ep.rs                   # Execution provider enum (CPU, CUDA, TensorRT, CoreML)
+│   │       └── postprocess.rs          # Softmax, argmax, mean pooling, BIO span merging
 │   ├── hephaestus-api/                 # HTTP server — routes, handlers, health, metrics
 │   │   ├── src/
-│   │   │   ├── routes.rs               # Axum router (/predict, /health, /metrics)
+│   │   │   ├── routes.rs               # Axum router (/infer, /health, /metrics)
 │   │   │   ├── handlers.rs             # Request → inference → response
 │   │   │   ├── telemetry.rs            # OTel + Prometheus setup
 │   │   │   └── batcher.rs              # Dynamic batching (configurable)
@@ -138,10 +154,15 @@ hephaestus/
 | **`STORAGE_PREFIX`** | — | Path prefix applied across all backends |
 | **`STORAGE_ROOT`** | — | Root directory (required when `STORAGE_TYPE=fs`) |
 | **`STORAGE_REGION`** | — | Cloud region for S3/GCS |
-| **`EXECUTION_PROVIDER`** | `cpu` | ONNX execution provider (`cpu`, `cuda`, `tensorrt`, `coreml`) |
+| **`EXECUTION_PROVIDER`** | `cpu` | ONNX execution provider: `cpu`, `cuda`, `tensorrt`, `coreml` (GPU providers require matching cargo feature) |
 | **`PORT`** | `8080` | HTTP listen port |
 | **`LOG_LEVEL`** | `info` | Log verbosity |
 | **`FORGE_URL`** | — | Forge service URL (enables Forge conversion tier) |
+| **`BATCH_ENABLED`** | `false` | Enable dynamic request batching |
+| **`BATCH_MAX_SIZE`** | `8` | Max requests per batch (1-64) |
+| **`BATCH_MAX_WAIT_MS`** | `50` | Max wait time before executing a partial batch |
+| **`REQUEST_TIMEOUT_SECS`** | `30` | Per-request inference timeout |
+| **`OTEL_EXPORTER_OTLP_ENDPOINT`** | — | OTel collector endpoint (enables distributed tracing) |
 
 ### Run with S3 storage cache
 
@@ -173,7 +194,7 @@ cargo run -p hephaestus
 ### Call the inference endpoint
 
 ```bash
-curl -X POST http://localhost:8080/predict \
+curl -X POST http://localhost:8080/infer \
   -H "Content-Type: application/json" \
   -d '{"text": "This product is amazing"}'
 ```
@@ -201,11 +222,13 @@ spec:
               value: "model-cache"
 ```
 
-Deploying a different model is the same image with a different `MODEL_ID`:
+Deploying a different model is the same image with a different `MODEL_ID`. For GPU inference, use the `cuda`-enabled image and set `EXECUTION_PROVIDER`:
 
 ```yaml
 - name: MODEL_ID
   value: "sentence-transformers/all-MiniLM-L6-v2"
+- name: EXECUTION_PROVIDER
+  value: "cuda"
 ```
 
 ## License
