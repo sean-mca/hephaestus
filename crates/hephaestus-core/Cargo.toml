@@ -16,6 +16,7 @@ tracing.workspace = true
 cuda = ["ort/cuda"]
 tensorrt = ["ort/tensorrt"]
 coreml = ["ort/coreml"]
+integration = []
 
 [dev-dependencies]
 hf-hub.workspace = true
