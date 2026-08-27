@@ -228,8 +228,14 @@ Plans:
   3. Integration test suite downloads real models and verifies inference output for all four profiles (classifier, embeddings, seq2seq, token_classifier)
   4. Dead code in TokenClassifierPipeline::execute is removed
 
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
+**Wave 1** *(parallel -- no file overlap)*
 
-- [ ] TBD (run /gsd-plan-phase 8 to break down)
+- [ ] 08-01-PLAN.md — NER score normalization fix (softmax per-token) and dead code removal
+- [ ] 08-02-PLAN.md — Pipeline mutex split: Mutex to RwLock for concurrent tokenization
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 08-03-PLAN.md — Integration tests with real HuggingFace models for classifier, embeddings, and token classifier
