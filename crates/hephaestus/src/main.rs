@@ -2,8 +2,8 @@
 //!
 //! Startup sequence: load config from env vars, initialize tracing,
 //! detect model profile, construct the appropriate pipeline, run a
-//! warmup inference pass, flip readiness, and start the HTTP server
-//! with graceful shutdown.
+//! warmup inference pass, flip readiness, and start the multiplexed
+//! gRPC + HTTP/REST server with graceful shutdown.
 
 mod config;
 
@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use hephaestus_api::{AppState, Batcher, batcher_loop, build_router};
+use hephaestus_api::grpc::GrpcInferenceService;
 use hephaestus_core::{
     ClassifierPipeline, EmbeddingsPipeline, ExecutionProvider, ModelProfile, PipelineKind,
     Seq2SeqPipeline, TokenClassifierPipeline, detect_profile,
@@ -206,6 +207,20 @@ async fn main() -> Result<(), anyhow::Error> {
         tracing::info!("dynamic batching disabled");
     }
 
+    // 5c. Create gRPC health reporter (SC-03).
+    //     HealthReporter defaults "" to SERVING; override to NOT_SERVING
+    //     until warmup completes so gRPC health probes are accurate.
+    let (health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_service_status("", tonic_health::ServingStatus::NotServing)
+        .await;
+    health_reporter
+        .set_service_status(
+            "hephaestus.v1.InferenceService",
+            tonic_health::ServingStatus::NotServing,
+        )
+        .await;
+
     // 6. Run warmup inference pass (CORE-03), then flip readiness.
     //    Warmup is a performance optimization (pre-warms caches), not a
     //    correctness gate. Failure logs a warning but does not crash the pod.
@@ -249,6 +264,15 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
     state.set_ready(true);
+    health_reporter
+        .set_service_status("", tonic_health::ServingStatus::Serving)
+        .await;
+    health_reporter
+        .set_service_status(
+            "hephaestus.v1.InferenceService",
+            tonic_health::ServingStatus::Serving,
+        )
+        .await;
     tracing::info!("warmup complete, readiness enabled");
 
     // 7. Start HTTP server with graceful shutdown.
@@ -258,7 +282,25 @@ async fn main() -> Result<(), anyhow::Error> {
         .context("failed to bind TCP listener")?;
     tracing::info!(%addr, "listening");
 
-    let app = build_router(state.clone());
+    // 7a. Build gRPC router: InferenceService, health, and reflection (SC-01..SC-04).
+    let reflection_service = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(hephaestus_proto::FILE_DESCRIPTOR_SET)
+        .build_v1()
+        .context("failed to build gRPC reflection service")?;
+
+    let inference_service =
+        hephaestus_proto::v1::inference_service_server::InferenceServiceServer::new(
+            GrpcInferenceService::new(state.clone()),
+        );
+
+    let grpc_router = tonic::service::Routes::new(inference_service)
+        .add_service(health_service)
+        .add_service(reflection_service)
+        .into_axum_router();
+
+    // 7b. Build REST router and merge with gRPC (SC-06: existing REST unchanged).
+    let rest_router = build_router(state.clone());
+    let app = rest_router.merge(grpc_router);
 
     // Drain-timeout watchdog (D-13).
     //
@@ -271,7 +313,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let server_state = state.clone();
     let watchdog_state = state.clone();
     let serve_fut = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal(server_state));
+        .with_graceful_shutdown(shutdown_signal(server_state, health_reporter));
 
     tokio::select! {
         result = serve_fut => {
@@ -305,9 +347,13 @@ async fn main() -> Result<(), anyhow::Error> {
 /// Wait for a shutdown signal (Ctrl-C or SIGTERM).
 ///
 /// On signal receipt, flips readiness to false so the k8s readiness
-/// probe returns 503 and the load balancer stops routing new traffic
-/// while in-flight requests drain (D-07).
-async fn shutdown_signal(state: Arc<AppState>) {
+/// probe returns 503, updates the gRPC health reporter to NOT_SERVING,
+/// and the load balancer stops routing new traffic while in-flight
+/// requests drain (D-07, SC-03).
+async fn shutdown_signal(
+    state: Arc<AppState>,
+    health_reporter: tonic_health::server::HealthReporter,
+) {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
@@ -332,4 +378,13 @@ async fn shutdown_signal(state: Arc<AppState>) {
 
     tracing::info!("shutdown signal received, draining connections");
     state.set_ready(false);
+    health_reporter
+        .set_service_status("", tonic_health::ServingStatus::NotServing)
+        .await;
+    health_reporter
+        .set_service_status(
+            "hephaestus.v1.InferenceService",
+            tonic_health::ServingStatus::NotServing,
+        )
+        .await;
 }
