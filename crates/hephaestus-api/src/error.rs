@@ -57,6 +57,33 @@ impl From<CoreError> for ApiError {
     }
 }
 
+impl From<ApiError> for tonic::Status {
+    fn from(err: ApiError) -> Self {
+        match err {
+            ApiError::NotReady => tonic::Status::unavailable("service not ready"),
+            ApiError::BadRequest(msg) => tonic::Status::invalid_argument(msg),
+            ApiError::Tokenization(msg) => {
+                tonic::Status::invalid_argument(format!("tokenization failed: {msg}"))
+            }
+            ApiError::Timeout => tonic::Status::deadline_exceeded("inference timeout"),
+            // Internal errors: log server-side, return generic message to clients
+            // (same information-hiding as the HTTP handler).
+            ApiError::Inference(ref msg) => {
+                tracing::error!(error = %msg, "gRPC inference error");
+                tonic::Status::internal("internal server error")
+            }
+            ApiError::Model(ref msg) => {
+                tracing::error!(error = %msg, "gRPC model error");
+                tonic::Status::internal("internal server error")
+            }
+            ApiError::Internal(ref msg) => {
+                tracing::error!(error = %msg, "gRPC internal error");
+                tonic::Status::internal("internal server error")
+            }
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code) = match &self {
@@ -154,5 +181,31 @@ mod tests {
 
         // Assert
         assert!(matches!(api_err, ApiError::Tokenization(_)));
+    }
+
+    #[test]
+    fn api_error_not_ready_to_grpc_unavailable() {
+        let status: tonic::Status = ApiError::NotReady.into();
+        assert_eq!(status.code(), tonic::Code::Unavailable);
+    }
+
+    #[test]
+    fn api_error_timeout_to_grpc_deadline_exceeded() {
+        let status: tonic::Status = ApiError::Timeout.into();
+        assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+    }
+
+    #[test]
+    fn api_error_tokenization_to_grpc_invalid_argument() {
+        let status: tonic::Status = ApiError::Tokenization("bad input".into()).into();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("tokenization failed"));
+    }
+
+    #[test]
+    fn api_error_inference_to_grpc_internal() {
+        let status: tonic::Status = ApiError::Inference("ort crash".into()).into();
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert_eq!(status.message(), "internal server error");
     }
 }

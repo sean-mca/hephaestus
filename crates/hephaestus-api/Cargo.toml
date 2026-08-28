@@ -5,7 +5,12 @@ edition = "2024"
 
 [dependencies]
 hephaestus-core = { path = "../hephaestus-core" }
+hephaestus-proto = { path = "../hephaestus-proto" }
 axum.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+tonic-reflection.workspace = true
+prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
