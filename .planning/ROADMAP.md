@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format (completed 2026-08-26)
 - [x] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry (completed 2026-08-26)
 - [x] **Phase 8: Inference Quality and Concurrency** - NER score normalization, pipeline mutex split for concurrent tokenization, real integration tests (completed 2026-08-27)
-- [ ] **Phase 10: gRPC Inference API** - tonic gRPC serving layer multiplexed with HTTP/REST, health checking, reflection, all model profiles
+- [x] **Phase 10: gRPC Inference API** - tonic gRPC serving layer multiplexed with HTTP/REST, health checking, reflection, all model profiles (completed 2026-08-28)
 
 ## Phase Details
 
@@ -175,7 +175,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
 | 8. Inference Quality and Concurrency | 3/3 | Complete   | 2026-08-27 |
 | 9. GPU Acceleration & TensorRT Engine Pipeline | 0/0 | Not started | — |
-| 10. gRPC Inference API | 1/2 | In Progress|  |
+| 10. gRPC Inference API | 2/2 | Complete   | 2026-08-28 |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -276,7 +276,7 @@ Plans:
   5. Proto definitions are published in the hephaestus-proto crate with tonic-build codegen
   6. All existing REST functionality, metrics, and graceful shutdown behavior remain unchanged
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 **Wave 1**
@@ -285,4 +285,4 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 10-02-PLAN.md — gRPC InferenceService impl, ApiError-to-Status mapping, route multiplexing, health reporter, reflection
+- [x] 10-02-PLAN.md — gRPC InferenceService impl, ApiError-to-Status mapping, route multiplexing, health reporter, reflection
