@@ -275,8 +275,13 @@ Plans:
   4. Server reflection is enabled, allowing grpcurl/grpcui to discover and call services without proto files
   5. Proto definitions are published in the hephaestus-proto crate with tonic-build codegen
   6. All existing REST functionality, metrics, and graceful shutdown behavior remain unchanged
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
+**Wave 1**
 
-- [ ] TBD (run /gsd-plan-phase 10 to break down)
+- [ ] 10-01-PLAN.md — Proto definitions, build.rs codegen, hephaestus-proto crate with generated types and FILE_DESCRIPTOR_SET
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 10-02-PLAN.md — gRPC InferenceService impl, ApiError-to-Status mapping, route multiplexing, health reporter, reflection
