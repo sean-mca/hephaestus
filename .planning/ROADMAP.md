@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Forge Conversion Service** - Python service for auto-converting non-ONNX models to ONNX format (completed 2026-08-26)
 - [x] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry (completed 2026-08-26)
 - [x] **Phase 8: Inference Quality and Concurrency** - NER score normalization, pipeline mutex split for concurrent tokenization, real integration tests (completed 2026-08-27)
+- [ ] **Phase 10: gRPC Inference API** - tonic gRPC serving layer multiplexed with HTTP/REST, health checking, reflection, all model profiles
 
 ## Phase Details
 
@@ -161,7 +162,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -174,6 +175,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
 | 8. Inference Quality and Concurrency | 3/3 | Complete   | 2026-08-27 |
 | 9. GPU Acceleration & TensorRT Engine Pipeline | 0/0 | Not started | — |
+| 10. gRPC Inference API | 0/0 | Not started | — |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -260,3 +262,21 @@ Plans:
 Plans:
 
 - [ ] TBD (run /gsd-plan-phase 9 to break down)
+
+### Phase 10: gRPC Inference API
+
+**Goal:** Add a tonic gRPC serving layer alongside the existing HTTP/REST API, multiplexed on the same port, with health checking, reflection, and full inference support for all model profiles
+**Depends on:** Phase 8
+**Success Criteria** (what must be TRUE):
+
+  1. gRPC clients can call an Infer RPC and receive classification, embedding, NER, or seq2seq results identical to the REST API
+  2. gRPC and HTTP/REST are multiplexed on the same port — no separate listener or port configuration required
+  3. gRPC health checking service reports serving/not-serving aligned with the existing readiness state
+  4. Server reflection is enabled, allowing grpcurl/grpcui to discover and call services without proto files
+  5. Proto definitions are published in the hephaestus-proto crate with tonic-build codegen
+  6. All existing REST functionality, metrics, and graceful shutdown behavior remain unchanged
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 10 to break down)

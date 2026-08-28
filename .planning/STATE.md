@@ -134,6 +134,7 @@ Recent decisions affecting current work:
 
 - Phase 8 added: Inference Quality and Concurrency (NER score bug, mutex split, integration tests)
 - Phase 9 added: GPU Acceleration & TensorRT Engine Pipeline (CUDA/TRT EPs, engine compilation CLI, lean runtime images, S3 engine caching)
+- Phase 10 added: gRPC Inference API (tonic gRPC layer multiplexed with HTTP/REST, health checking, reflection, all model profiles)
 
 ### Pending Todos
 
