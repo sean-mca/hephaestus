@@ -1325,7 +1325,9 @@ name = "hephaestus-proto"
 version = "0.1.0"
 dependencies = [
  "prost",
+ "serde_json",
  "tonic",
+ "tonic-prost",
  "tonic-prost-build",
 ]
 

@@ -5,7 +5,11 @@ edition = "2024"
 
 [dependencies]
 tonic = { workspace = true }
+tonic-prost = "0.14"
 prost = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = "0.14"
