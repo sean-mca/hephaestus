@@ -175,7 +175,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 7. Production Hardening | 1/1 | Complete   | 2026-08-26 |
 | 8. Inference Quality and Concurrency | 3/3 | Complete   | 2026-08-27 |
 | 9. GPU Acceleration & TensorRT Engine Pipeline | 0/0 | Not started | — |
-| 10. gRPC Inference API | 0/0 | Not started | — |
+| 10. gRPC Inference API | 1/2 | In Progress|  |
 
 ### Phase 6: OpenDAL Storage Abstraction
 
@@ -275,12 +275,13 @@ Plans:
   4. Server reflection is enabled, allowing grpcurl/grpcui to discover and call services without proto files
   5. Proto definitions are published in the hephaestus-proto crate with tonic-build codegen
   6. All existing REST functionality, metrics, and graceful shutdown behavior remain unchanged
-**Plans:** 2 plans
+
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 10-01-PLAN.md — Proto definitions, build.rs codegen, hephaestus-proto crate with generated types and FILE_DESCRIPTOR_SET
+- [x] 10-01-PLAN.md — Proto definitions, build.rs codegen, hephaestus-proto crate with generated types and FILE_DESCRIPTOR_SET
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
