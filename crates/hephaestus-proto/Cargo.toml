@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 tonic = { workspace = true }
+tonic-prost = "0.14"
 prost = { workspace = true }
 
 [build-dependencies]
