@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package hephaestus.v1;
+
+// Unified inference service for all model profiles.
+//
+// A single Infer RPC accepts text input and returns model-determined
+// JSON output as opaque bytes in result_json. New model profiles never
+// require proto changes.
+service InferenceService {
+  rpc Infer(InferRequest) returns (InferResponse);
+}
+
+message InferRequest {
+  string text = 1;
+}
+
+message InferResponse {
+  string model_id = 1;
+  uint64 latency_ms = 2;
+  // Opaque JSON bytes — same payload the REST API returns.
+  // Clients deserialize based on the model profile they know they called.
+  bytes result_json = 3;
+}
