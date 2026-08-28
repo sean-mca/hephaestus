@@ -35,13 +35,6 @@ opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
 tracing-opentelemetry = "0.33"
 
-# gRPC serving (Phase 10)
-tonic = "0.14"
-tonic-health = "0.14"
-tonic-reflection = "0.14"
-prost = "0.14"
-prost-types = "0.14"
-
 # HTTP serving (Phase 2)
 axum = "0.8"
 tower = { version = "0.5", features = ["timeout"] }
