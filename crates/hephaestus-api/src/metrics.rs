@@ -38,13 +38,15 @@ pub fn install_recorder() -> Result<PrometheusHandle, anyhow::Error> {
 /// interact with metrics macros directly. All histograms and counters
 /// carry a `model_id` label per D-10.
 pub struct StageTimer {
-    model_id: String,
+    model_id: Arc<str>,
 }
 
 impl StageTimer {
     /// Create a new timer for the given model.
-    pub fn new(model_id: String) -> Self {
-        Self { model_id }
+    pub fn new(model_id: impl Into<Arc<str>>) -> Self {
+        Self {
+            model_id: model_id.into(),
+        }
     }
 
     /// Time a pipeline stage and record its duration.
@@ -100,14 +102,14 @@ mod tests {
 
     #[test]
     fn stage_timer_new_accepts_model_id() {
-        let timer = StageTimer::new("test-model".to_string());
-        assert_eq!(timer.model_id, "test-model");
+        let timer = StageTimer::new("test-model");
+        assert_eq!(&*timer.model_id, "test-model");
     }
 
     #[test]
     fn stage_timer_time_returns_closure_result() {
         // Arrange
-        let timer = StageTimer::new("test-model".to_string());
+        let timer = StageTimer::new("test-model");
 
         // Act -- the closure returns a value; time() must pass it through.
         let result = timer.time("tokenization", || 42);
@@ -119,7 +121,7 @@ mod tests {
     #[test]
     fn stage_timer_time_returns_result_type() {
         // Arrange
-        let timer = StageTimer::new("test-model".to_string());
+        let timer = StageTimer::new("test-model");
 
         // Act -- verify it works with Result types (common in pipeline calls).
         let result: Result<&str, &str> = timer.time("inference", || Ok("output"));

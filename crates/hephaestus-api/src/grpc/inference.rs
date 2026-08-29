@@ -54,7 +54,7 @@ impl InferenceService for GrpcInferenceService {
         }
 
         let request_start = Instant::now();
-        let timer = StageTimer::new(self.state.model_id().to_string());
+        let timer = StageTimer::new(self.state.model_id());
 
         // Wrap inference in a request-level timeout (mirrors HTTP handler).
         let result = tokio::time::timeout(self.state.request_timeout(), async {

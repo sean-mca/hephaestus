@@ -56,7 +56,7 @@ pub async fn infer(
     }
 
     let request_start = Instant::now();
-    let timer = StageTimer::new(state.model_id().to_string());
+    let timer = StageTimer::new(state.model_id());
 
     // Wrap inference in a request-level timeout (D-12, D-14, CORE-04).
     // Uses tokio::time::timeout (not tower-http TimeoutLayer) for full
