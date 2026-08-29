@@ -21,6 +21,10 @@ pub enum CoreError {
     #[error("model validation failed: {0}")]
     ModelValidation(String),
 
+    /// Invalid input type for the current pipeline profile.
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+
     /// Configuration error.
     #[error("config error: {0}")]
     Config(String),

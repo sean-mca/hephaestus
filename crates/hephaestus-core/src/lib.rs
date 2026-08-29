@@ -20,7 +20,7 @@ pub use ep::ExecutionProvider;
 pub use error::CoreError;
 pub use pipeline::{
     ClassifierOutput, ClassifierPipeline, EmbeddingsPipeline, Entity,
-    Pipeline, PipelineKind, PreparedInput, Seq2SeqPipeline,
-    TokenClassifierPipeline,
+    InferenceInput, Pipeline, PipelineKind, PipelineOutput, PreparedAudio,
+    PreparedData, PreparedInput, Seq2SeqPipeline, TokenClassifierPipeline,
 };
 pub use profile::{ModelProfile, detect_profile};

@@ -43,6 +43,115 @@ pub struct ClassifierOutput {
     pub score: f32,
 }
 
+/// Input accepted by [`PipelineKind::prepare`] (D-01).
+///
+/// Text-based pipelines consume `Text(String)`; ASR pipelines
+/// consume `Audio(Vec<f32>)`. The `From<String>` impl enables
+/// backward-compatible calls -- existing callers that pass a `String`
+/// continue to work without modification.
+pub enum InferenceInput {
+    /// Text input for classifiers, embeddings, seq2seq, and token classifiers.
+    Text(String),
+    /// Raw audio samples (mono, f32, model-specific sample rate) for ASR.
+    Audio(Vec<f32>),
+}
+
+impl From<String> for InferenceInput {
+    fn from(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+/// Prepared audio features ready for ONNX inference.
+///
+/// Holds mel spectrogram (or reshaped raw waveform) and optionally
+/// the original samples for CTC models that need waveform length.
+pub struct PreparedAudio {
+    /// Mel spectrogram or reshaped waveform tensor (time_steps x features).
+    pub(crate) features: Array2<f32>,
+    /// Original raw samples, preserved for CTC models that need waveform length.
+    pub(crate) raw_samples: Option<Vec<f32>>,
+}
+
+impl PreparedAudio {
+    /// Construct a `PreparedAudio` for testing purposes.
+    ///
+    /// Mirrors `PreparedInput::new_for_test` -- bypasses the `pub(crate)`
+    /// restriction so downstream crates can create test instances.
+    pub fn new_for_test(features: Array2<f32>, raw_samples: Option<Vec<f32>>) -> Self {
+        Self { features, raw_samples }
+    }
+}
+
+/// Generic prepared data wrapping text or audio preprocessing output.
+///
+/// Returned by [`PipelineKind::prepare`], consumed by
+/// [`PipelineKind::execute`] and [`PipelineKind::execute_batch`].
+pub enum PreparedData {
+    /// Tokenized text input.
+    Text(PreparedInput),
+    /// Preprocessed audio features.
+    Audio(PreparedAudio),
+}
+
+impl PreparedData {
+    /// Extract the inner [`PreparedInput`] if this is a `Text` variant.
+    ///
+    /// Returns `None` for `Audio`. Used by the batcher path to unwrap
+    /// text inputs for batch tensor construction.
+    pub fn into_text(self) -> Option<PreparedInput> {
+        match self {
+            Self::Text(t) => Some(t),
+            Self::Audio(_) => None,
+        }
+    }
+}
+
+/// Typed output from [`PipelineKind::execute`] (D-02).
+///
+/// Replaces raw `serde_json::Value` with compile-time-checked variants
+/// for each model profile. The [`to_json`](PipelineOutput::to_json)
+/// method converts to JSON for REST/gRPC responses.
+pub enum PipelineOutput {
+    /// Classifier result with predicted label and confidence score.
+    Classifier { label: String, score: f32 },
+    /// Embedding vector (L2-normalized, unit length).
+    Embeddings(Vec<f32>),
+    /// Generated text from a fused seq2seq model.
+    Seq2Seq(String),
+    /// Token-level entity spans from NER/POS models.
+    TokenClassifier(Vec<Entity>),
+    /// Transcribed text from an ASR model.
+    Asr(String),
+}
+
+impl PipelineOutput {
+    /// Convert typed output to a JSON value for HTTP/gRPC responses.
+    ///
+    /// Each variant produces the same JSON shape that the old
+    /// `serde_json::json!` calls in `PipelineKind::execute` produced,
+    /// ensuring backward compatibility with existing API consumers.
+    pub fn to_json(&self) -> serde_json::Value {
+        match self {
+            Self::Classifier { label, score } => {
+                serde_json::json!({ "label": label, "score": score })
+            }
+            Self::Embeddings(vec) => {
+                serde_json::json!({ "embedding": vec })
+            }
+            Self::Seq2Seq(text) => {
+                serde_json::json!({ "generated_text": text })
+            }
+            Self::TokenClassifier(entities) => {
+                serde_json::json!({ "entities": entities })
+            }
+            Self::Asr(text) => {
+                serde_json::json!({ "text": text })
+            }
+        }
+    }
+}
+
 /// Prepared input ready for batch collection or immediate execution.
 ///
 /// This type is opaque to callers outside the crate -- construct it
@@ -1331,6 +1440,78 @@ mod tests {
         let batch = Array2::<i64>::zeros((4, 12));
         assert_eq!(batch.shape(), &[4, 12]);
         assert!(batch.iter().all(|&v| v == 0));
+    }
+
+    #[test]
+    fn inference_input_from_string_produces_text() {
+        let input = InferenceInput::from("hello".to_string());
+        assert!(matches!(input, InferenceInput::Text(ref s) if s == "hello"));
+    }
+
+    #[test]
+    fn prepared_data_into_text_returns_some_for_text() {
+        let prepared = PreparedInput::new_for_test(vec![101], vec![1], 1);
+        let data = PreparedData::Text(prepared);
+        assert!(data.into_text().is_some());
+    }
+
+    #[test]
+    fn prepared_data_into_text_returns_none_for_audio() {
+        let features = Array2::<f32>::zeros((10, 80));
+        let audio = PreparedAudio::new_for_test(features, None);
+        let data = PreparedData::Audio(audio);
+        assert!(data.into_text().is_none());
+    }
+
+    #[test]
+    fn pipeline_output_classifier_to_json() {
+        let output = PipelineOutput::Classifier {
+            label: "POSITIVE".to_string(),
+            score: 0.99,
+        };
+        let json = output.to_json();
+        assert_eq!(json["label"], "POSITIVE");
+        let score = json["score"].as_f64().unwrap();
+        assert!((score - 0.99).abs() < 1e-4);
+    }
+
+    #[test]
+    fn pipeline_output_embeddings_to_json() {
+        let output = PipelineOutput::Embeddings(vec![0.1, 0.2, 0.3]);
+        let json = output.to_json();
+        let arr = json["embedding"].as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+    }
+
+    #[test]
+    fn pipeline_output_seq2seq_to_json() {
+        let output = PipelineOutput::Seq2Seq("translated text".to_string());
+        let json = output.to_json();
+        assert_eq!(json["generated_text"], "translated text");
+    }
+
+    #[test]
+    fn pipeline_output_token_classifier_to_json() {
+        let entities = vec![Entity {
+            word: "John".to_string(),
+            entity: "PER".to_string(),
+            score: 0.98,
+            start: 0,
+            end: 4,
+        }];
+        let output = PipelineOutput::TokenClassifier(entities);
+        let json = output.to_json();
+        let arr = json["entities"].as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["word"], "John");
+        assert_eq!(arr[0]["entity"], "PER");
+    }
+
+    #[test]
+    fn pipeline_output_asr_to_json() {
+        let output = PipelineOutput::Asr("hello world".to_string());
+        let json = output.to_json();
+        assert_eq!(json["text"], "hello world");
     }
 
     #[test]

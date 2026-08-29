@@ -49,6 +49,7 @@ impl From<CoreError> for ApiError {
         match err {
             CoreError::Tokenization(msg) => Self::Tokenization(msg),
             CoreError::Inference(msg) => Self::Inference(msg),
+            CoreError::InvalidInput(msg) => Self::BadRequest(msg),
             CoreError::ModelLoad(msg) | CoreError::ModelValidation(msg) => Self::Model(msg),
             CoreError::Config(msg) => Self::Internal(msg),
             CoreError::Io(e) => Self::Internal(e.to_string()),
