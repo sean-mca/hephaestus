@@ -41,8 +41,12 @@ pub fn init(log_level: &str, otel_endpoint: Option<&str>) -> Result<(), anyhow::
         .with_target(true);
 
     // EnvFilter: RUST_LOG takes precedence; fall back to log_level parameter.
+    // ort::logging bridges ONNX Runtime's internal C++ logs at INFO level,
+    // flooding output with BFCArena allocations — suppress to warn by default.
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level));
+        .unwrap_or_else(|_| {
+            tracing_subscriber::EnvFilter::new(format!("{log_level},ort::logging=warn"))
+        });
 
     // Conditional OTel layer per D-11: Option<Layer> implements Layer,
     // passing through when None -- no feature flags or if/else in hot paths.

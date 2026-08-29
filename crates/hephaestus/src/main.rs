@@ -285,6 +285,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // 7a. Build gRPC router: InferenceService, health, and reflection (SC-01..SC-04).
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(hephaestus_proto::FILE_DESCRIPTOR_SET)
+        .register_encoded_file_descriptor_set(tonic_health::pb::FILE_DESCRIPTOR_SET)
         .build_v1()
         .context("failed to build gRPC reflection service")?;
 

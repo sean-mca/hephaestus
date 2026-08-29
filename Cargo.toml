@@ -43,7 +43,7 @@ prost = "0.14"
 prost-types = "0.14"
 
 # HTTP serving (Phase 2)
-axum = "0.8"
+axum = { version = "0.8", features = ["http2"] }
 tower = { version = "0.5", features = ["timeout"] }
 tower-http = { version = "0.7", features = ["limit", "timeout", "trace"] }
 
