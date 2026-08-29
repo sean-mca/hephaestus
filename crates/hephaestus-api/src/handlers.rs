@@ -71,13 +71,13 @@ pub async fn infer(
                 timer.time("tokenization", || pipeline.prepare(req.text))?
             }; // Read lock dropped here before submit.
 
-            let output = state
+            let pipeline_output = state
                 .batcher()
                 .ok_or(ApiError::Internal("batcher not available".to_string()))?
                 .submit(prepared)
                 .await
                 .map_err(ApiError::from)?;
-            Ok::<_, ApiError>(output)
+            Ok::<_, ApiError>(pipeline_output.to_json())
         } else {
             // Direct path (D-07): read lock for prepare, write lock for execute.
             // Splitting the lock allows other requests to tokenize concurrently
@@ -86,11 +86,11 @@ pub async fn infer(
                 let pipeline = state.read_pipeline().await;
                 timer.time("tokenization", || pipeline.prepare(req.text))?
             }; // Read lock dropped here.
-            let output = {
+            let pipeline_output = {
                 let mut pipeline = state.write_pipeline().await;
                 timer.time("inference", || pipeline.execute(prepared))?
             }; // Write lock dropped here.
-            Ok::<_, ApiError>(output)
+            Ok::<_, ApiError>(pipeline_output.to_json())
         }
     })
     .await;

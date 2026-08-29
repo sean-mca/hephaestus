@@ -66,6 +66,7 @@ impl From<String> for InferenceInput {
 ///
 /// Holds mel spectrogram (or reshaped raw waveform) and optionally
 /// the original samples for CTC models that need waveform length.
+#[allow(dead_code)] // Fields used by ASR pipeline (Plan 11-03).
 pub struct PreparedAudio {
     /// Mel spectrogram or reshaped waveform tensor (time_steps x features).
     pub(crate) features: Array2<f32>,
@@ -802,13 +803,30 @@ pub enum PipelineKind {
 }
 
 impl PipelineKind {
-    /// Prepare input for any profile. All profiles accept text input.
-    pub fn prepare(&self, input: String) -> Result<PreparedInput, CoreError> {
-        match self {
-            Self::Classifier(p) => p.prepare(input),
-            Self::Embeddings(p) => p.prepare(input),
-            Self::Seq2Seq(p) => p.prepare(input),
-            Self::TokenClassifier(p) => p.prepare(input),
+    /// Prepare input for any profile (D-01).
+    ///
+    /// Accepts `String` (backward compat via `From<String>`) or
+    /// `InferenceInput` directly. Text pipelines reject audio input
+    /// with [`CoreError::InvalidInput`]; the ASR variant will be
+    /// added in Plan 11-03.
+    pub fn prepare(&self, input: impl Into<InferenceInput>) -> Result<PreparedData, CoreError> {
+        let input = input.into();
+        match (self, input) {
+            (Self::Classifier(p), InferenceInput::Text(text)) => {
+                Ok(PreparedData::Text(p.prepare(text)?))
+            }
+            (Self::Embeddings(p), InferenceInput::Text(text)) => {
+                Ok(PreparedData::Text(p.prepare(text)?))
+            }
+            (Self::Seq2Seq(p), InferenceInput::Text(text)) => {
+                Ok(PreparedData::Text(p.prepare(text)?))
+            }
+            (Self::TokenClassifier(p), InferenceInput::Text(text)) => {
+                Ok(PreparedData::Text(p.prepare(text)?))
+            }
+            (_, InferenceInput::Audio(_)) => Err(CoreError::InvalidInput(
+                "text pipeline requires text input, got audio".to_string(),
+            )),
         }
     }
 
@@ -825,13 +843,40 @@ impl PipelineKind {
     /// post-processing.
     pub fn execute_batch(
         &mut self,
-        batch: Vec<PreparedInput>,
-    ) -> Vec<Result<serde_json::Value, CoreError>> {
+        batch: Vec<PreparedData>,
+    ) -> Vec<Result<PipelineOutput, CoreError>> {
         if batch.is_empty() {
             return Vec::new();
         }
 
+        // Extract PreparedInput from each PreparedData::Text item.
+        // Audio items in a text-pipeline batch produce per-item errors.
         let batch_size = batch.len();
+        let mut text_batch: Vec<PreparedInput> = Vec::with_capacity(batch_size);
+        let mut audio_indices: Vec<usize> = Vec::new();
+        for (i, item) in batch.into_iter().enumerate() {
+            match item {
+                PreparedData::Text(t) => text_batch.push(t),
+                PreparedData::Audio(_) => {
+                    audio_indices.push(i);
+                    // Push a dummy to keep indexing aligned.
+                    text_batch.push(PreparedInput::new_for_test(vec![0], vec![0], 1));
+                }
+            }
+        }
+
+        // If all items are audio, short-circuit with errors.
+        if audio_indices.len() == batch_size {
+            return (0..batch_size)
+                .map(|_| {
+                    Err(CoreError::InvalidInput(
+                        "text pipeline received audio prepared data in batch".to_string(),
+                    ))
+                })
+                .collect();
+        }
+
+        let batch = text_batch;
         let max_seq_len = batch.iter().map(|p| p.sequence_length).max().unwrap_or(0);
 
         // Check if the session expects token_type_ids (BERT vs DistilBERT).
@@ -894,7 +939,7 @@ impl PipelineKind {
 
         // Match on variant to access session + postprocessing resources
         // within the same borrow scope.
-        match self {
+        let mut results = match self {
             Self::Classifier(p) => {
                 let outputs = match p.session.run(ort_inputs) {
                     Ok(o) => o,
@@ -935,40 +980,51 @@ impl PipelineKind {
                 };
                 batch_postprocess_token_classifier(outputs, batch, batch_size, max_seq_len, &p.id2label, &p.tokenizer)
             }
+        };
+
+        // Replace results for audio indices with errors.
+        for &idx in &audio_indices {
+            if idx < results.len() {
+                results[idx] = Err(CoreError::InvalidInput(
+                    "text pipeline received audio prepared data in batch".to_string(),
+                ));
+            }
         }
+
+        results
     }
 
-    /// Execute single inference and return model-determined output as JSON value (D-05).
+    /// Execute single inference and return typed output (D-02, D-05).
+    ///
+    /// Accepts [`PreparedData`] and returns [`PipelineOutput`]. Callers
+    /// convert to JSON via [`PipelineOutput::to_json()`] when needed.
     pub fn execute(
         &mut self,
-        prepared: PreparedInput,
-    ) -> Result<serde_json::Value, CoreError> {
-        match self {
-            Self::Classifier(p) => {
-                let out = p.execute(prepared)?;
-                Ok(serde_json::json!({
-                    "label": out.label,
-                    "score": out.score,
-                }))
+        prepared: PreparedData,
+    ) -> Result<PipelineOutput, CoreError> {
+        match (self, prepared) {
+            (Self::Classifier(p), PreparedData::Text(t)) => {
+                let out = p.execute(t)?;
+                Ok(PipelineOutput::Classifier {
+                    label: out.label,
+                    score: out.score,
+                })
             }
-            Self::Embeddings(p) => {
-                let out = p.execute(prepared)?;
-                Ok(serde_json::json!({
-                    "embedding": out,
-                }))
+            (Self::Embeddings(p), PreparedData::Text(t)) => {
+                let out = p.execute(t)?;
+                Ok(PipelineOutput::Embeddings(out))
             }
-            Self::Seq2Seq(p) => {
-                let out = p.execute(prepared)?;
-                Ok(serde_json::json!({
-                    "generated_text": out,
-                }))
+            (Self::Seq2Seq(p), PreparedData::Text(t)) => {
+                let out = p.execute(t)?;
+                Ok(PipelineOutput::Seq2Seq(out))
             }
-            Self::TokenClassifier(p) => {
-                let out = p.execute(prepared)?;
-                Ok(serde_json::json!({
-                    "entities": out,
-                }))
+            (Self::TokenClassifier(p), PreparedData::Text(t)) => {
+                let out = p.execute(t)?;
+                Ok(PipelineOutput::TokenClassifier(out))
             }
+            (_, PreparedData::Audio(_)) => Err(CoreError::InvalidInput(
+                "text pipeline received audio prepared data".to_string(),
+            )),
         }
     }
 }
@@ -1016,7 +1072,7 @@ fn batch_postprocess_classifier(
     outputs: ort::session::SessionOutputs<'_>,
     batch_size: usize,
     id2label: &[String],
-) -> Vec<Result<serde_json::Value, CoreError>> {
+) -> Vec<Result<PipelineOutput, CoreError>> {
     // WR-05: Guard against models with zero output tensors.
     if let Err(e) = check_outputs_nonempty(&outputs) {
         return (0..batch_size)
@@ -1052,7 +1108,7 @@ fn batch_postprocess_classifier(
                     id2label.len(),
                 ))
             })?.clone();
-            Ok(serde_json::json!({ "label": label, "score": score }))
+            Ok(PipelineOutput::Classifier { label, score })
         })
         .collect()
 }
@@ -1063,7 +1119,7 @@ fn batch_postprocess_embeddings(
     batch_size: usize,
     max_seq_len: usize,
     attention_mask_array: &Array2<i64>,
-) -> Vec<Result<serde_json::Value, CoreError>> {
+) -> Vec<Result<PipelineOutput, CoreError>> {
     // WR-05: Guard against models with zero output tensors.
     if let Err(e) = check_outputs_nonempty(&outputs) {
         return (0..batch_size)
@@ -1096,7 +1152,7 @@ fn batch_postprocess_embeddings(
             let mask_vec: Vec<i64> = sample_mask.to_vec();
             let mut pooled = postprocess::mean_pool(sample_data, &mask_vec, hidden_dim)?;
             postprocess::l2_normalize(&mut pooled);
-            Ok(serde_json::json!({ "embedding": pooled }))
+            Ok(PipelineOutput::Embeddings(pooled))
         })
         .collect()
 }
@@ -1107,7 +1163,7 @@ fn batch_postprocess_seq2seq(
     outputs: ort::session::SessionOutputs<'_>,
     batch_size: usize,
     tokenizer: &Tokenizer,
-) -> Vec<Result<serde_json::Value, CoreError>> {
+) -> Vec<Result<PipelineOutput, CoreError>> {
     // WR-05: Guard against models with zero output tensors.
     if let Err(e) = check_outputs_nonempty(&outputs) {
         return (0..batch_size)
@@ -1137,7 +1193,7 @@ fn batch_postprocess_seq2seq(
                     })
                     .collect::<Result<Vec<u32>, CoreError>>()?;
                 match tokenizer.decode(&ids, true) {
-                    Ok(text) => Ok(serde_json::json!({ "generated_text": text })),
+                    Ok(text) => Ok(PipelineOutput::Seq2Seq(text)),
                     Err(e) => Err(CoreError::Inference(e.to_string())),
                 }
             })
@@ -1167,7 +1223,7 @@ fn batch_postprocess_seq2seq(
                     })
                     .collect::<Result<Vec<u32>, CoreError>>()?;
                 match tokenizer.decode(&ids, true) {
-                    Ok(text) => Ok(serde_json::json!({ "generated_text": text })),
+                    Ok(text) => Ok(PipelineOutput::Seq2Seq(text)),
                     Err(e) => Err(CoreError::Inference(e.to_string())),
                 }
             })
@@ -1187,7 +1243,7 @@ fn batch_postprocess_token_classifier(
     max_seq_len: usize,
     id2label: &[String],
     tokenizer: &Tokenizer,
-) -> Vec<Result<serde_json::Value, CoreError>> {
+) -> Vec<Result<PipelineOutput, CoreError>> {
     // WR-05: Guard against models with zero output tensors.
     if let Err(e) = check_outputs_nonempty(&outputs) {
         return (0..batch_size)
@@ -1243,7 +1299,7 @@ fn batch_postprocess_token_classifier(
                 entity.word = tokenizer.decode(&token_ids, true).unwrap_or_default();
             }
 
-            Ok(serde_json::json!({ "entities": entities }))
+            Ok(PipelineOutput::TokenClassifier(entities))
         })
         .collect()
 }

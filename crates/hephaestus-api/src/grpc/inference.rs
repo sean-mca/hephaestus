@@ -67,25 +67,25 @@ impl InferenceService for GrpcInferenceService {
                     timer.time("tokenization", || pipeline.prepare(req.text))?
                 }; // Read lock dropped here before submit.
 
-                let output = self
+                let pipeline_output = self
                     .state
                     .batcher()
                     .ok_or(ApiError::Internal("batcher not available".into()))?
                     .submit(prepared)
                     .await
                     .map_err(ApiError::from)?;
-                Ok::<_, ApiError>(output)
+                Ok::<_, ApiError>(pipeline_output.to_json())
             } else {
                 // Direct path: read lock for prepare, write lock for execute.
                 let prepared = {
                     let pipeline = self.state.read_pipeline().await;
                     timer.time("tokenization", || pipeline.prepare(req.text))?
                 }; // Read lock dropped here.
-                let output = {
+                let pipeline_output = {
                     let mut pipeline = self.state.write_pipeline().await;
                     timer.time("inference", || pipeline.execute(prepared))?
                 }; // Write lock dropped here.
-                Ok::<_, ApiError>(output)
+                Ok::<_, ApiError>(pipeline_output.to_json())
             }
         })
         .await;

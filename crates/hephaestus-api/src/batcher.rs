@@ -12,7 +12,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use hephaestus_core::{CoreError, PreparedInput};
+use hephaestus_core::{CoreError, PipelineOutput, PreparedData};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::state::AppState;
@@ -20,9 +20,9 @@ use crate::state::AppState;
 /// A single inference request queued for batching.
 pub struct BatchRequest {
     /// The tokenized and prepared input ready for inference.
-    pub prepared: PreparedInput,
+    pub prepared: PreparedData,
     /// One-shot channel to send the result back to the HTTP handler.
-    pub reply: oneshot::Sender<Result<serde_json::Value, CoreError>>,
+    pub reply: oneshot::Sender<Result<PipelineOutput, CoreError>>,
 }
 
 /// Handle for submitting requests to the batcher.
@@ -64,8 +64,8 @@ impl Batcher {
     /// channel is dropped without a response.
     pub async fn submit(
         &self,
-        prepared: PreparedInput,
-    ) -> Result<serde_json::Value, CoreError> {
+        prepared: PreparedData,
+    ) -> Result<PipelineOutput, CoreError> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         self.tx
@@ -136,9 +136,9 @@ pub async fn batcher_loop(
         }
 
         // Extract prepared inputs and reply channels.
-        let mut replies: Vec<oneshot::Sender<Result<serde_json::Value, CoreError>>> =
+        let mut replies: Vec<oneshot::Sender<Result<PipelineOutput, CoreError>>> =
             Vec::with_capacity(batch.len());
-        let mut inputs: Vec<PreparedInput> = Vec::with_capacity(batch.len());
+        let mut inputs: Vec<PreparedData> = Vec::with_capacity(batch.len());
         for req in batch {
             inputs.push(req.prepared);
             replies.push(req.reply);
@@ -169,10 +169,12 @@ mod tests {
 
         // Act -- spawn submit in background, receive from channel.
         let handle = tokio::spawn(async move {
-            let _ = batcher.submit(hephaestus_core::PreparedInput::new_for_test(
-                vec![101, 2023, 102],
-                vec![1, 1, 1],
-                3,
+            let _ = batcher.submit(hephaestus_core::PreparedData::Text(
+                hephaestus_core::PreparedInput::new_for_test(
+                    vec![101, 2023, 102],
+                    vec![1, 1, 1],
+                    3,
+                ),
             )).await;
         });
 
@@ -183,7 +185,10 @@ mod tests {
             .expect("channel should have a request");
 
         // Verify request arrived. Send a reply to complete the round trip.
-        let _ = req.reply.send(Ok(serde_json::json!({"test": true})));
+        let _ = req.reply.send(Ok(hephaestus_core::PipelineOutput::Classifier {
+            label: "TEST".to_string(),
+            score: 0.99,
+        }));
 
         handle.await.expect("submit task should complete");
     }
@@ -197,10 +202,12 @@ mod tests {
         let mut sent = 0;
         for _ in 0..20 {
             let (reply_tx, _reply_rx) = oneshot::channel();
-            let prepared = hephaestus_core::PreparedInput::new_for_test(
-                vec![101],
-                vec![1],
-                1,
+            let prepared = hephaestus_core::PreparedData::Text(
+                hephaestus_core::PreparedInput::new_for_test(
+                    vec![101],
+                    vec![1],
+                    1,
+                ),
             );
             match batcher.tx.try_send(BatchRequest {
                 prepared,
