@@ -960,6 +960,11 @@ impl AsrPipeline {
 
         // Invert to Vec<String> indexed by id.
         let max_id = vocab_map.values().copied().max().unwrap_or(0);
+        if max_id > 1_000_000 {
+            return Err(CoreError::ModelLoad(format!(
+                "vocab.json max token ID {max_id} exceeds safety limit of 1,000,000"
+            )));
+        }
         let mut vocab = vec![String::new(); max_id + 1];
         for (token, id) in &vocab_map {
             vocab[*id] = token.clone();
