@@ -220,6 +220,13 @@ pub async fn ws_transcribe(
         return Err(ApiError::NotReady);
     }
 
+    // Validate channel label length.
+    if params.channel.len() > 256 {
+        return Err(ApiError::BadRequest(
+            "channel label must be 256 characters or fewer".into(),
+        ));
+    }
+
     // Validate sample rate (D-08).
     if params.sample_rate != 16000 {
         return Err(ApiError::BadRequest(format!(
