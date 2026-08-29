@@ -48,6 +48,12 @@ pub struct AppState {
     /// Optional dynamic batcher handle. `Some` when `BATCH_ENABLED=true`;
     /// `None` when batching is disabled (default, zero overhead per D-07).
     batcher: Option<Batcher>,
+
+    /// Window duration in seconds for streaming audio chunking (D-10).
+    window_size_secs: f32,
+
+    /// Overlap duration in seconds between consecutive audio windows (D-10).
+    overlap_secs: f32,
 }
 
 impl AppState {
@@ -61,6 +67,8 @@ impl AppState {
         request_timeout: Duration,
         metrics_handle: PrometheusHandle,
         batcher: Option<Batcher>,
+        window_size_secs: f32,
+        overlap_secs: f32,
     ) -> Self {
         Self {
             pipeline: RwLock::new(pipeline),
@@ -70,6 +78,8 @@ impl AppState {
             request_timeout,
             metrics_handle,
             batcher,
+            window_size_secs,
+            overlap_secs,
         }
     }
 
@@ -133,5 +143,15 @@ impl AppState {
     /// Reference to the batcher handle, if batching is enabled.
     pub fn batcher(&self) -> Option<&Batcher> {
         self.batcher.as_ref()
+    }
+
+    /// Window duration in seconds for streaming audio chunking.
+    pub fn window_size_secs(&self) -> f32 {
+        self.window_size_secs
+    }
+
+    /// Overlap duration in seconds between consecutive audio windows.
+    pub fn overlap_secs(&self) -> f32 {
+        self.overlap_secs
     }
 }

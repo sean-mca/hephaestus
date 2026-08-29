@@ -10,6 +10,7 @@ use std::sync::Arc;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
+use hephaestus_core::{InferenceInput, PipelineOutput};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
@@ -221,16 +222,15 @@ pub async fn ws_transcribe(
 /// Handle an established WebSocket connection for audio transcription.
 ///
 /// Receives binary audio frames, converts PCM bytes to f32 samples,
-/// buffers with windowed chunking, and sends back JSON transcript
-/// messages. The `text` field is empty until Plan 11-03 wires the
-/// ASR pipeline.
+/// buffers with windowed chunking, runs ASR inference via the pipeline,
+/// and sends back JSON transcript messages with real transcription text.
 ///
 /// Enforces a 30-second idle timeout to prevent connection slot
 /// exhaustion from idle clients (T-11-05).
 async fn handle_transcribe_socket(
     socket: WebSocket,
     params: TranscribeParams,
-    _state: Arc<AppState>,
+    state: Arc<AppState>,
 ) {
     use futures_util::SinkExt;
 
@@ -242,7 +242,11 @@ async fn handle_transcribe_socket(
         }
     };
 
-    let mut buffer = AudioBuffer::new(30.0, 1.0, params.sample_rate);
+    let mut buffer = AudioBuffer::new(
+        state.window_size_secs(),
+        state.overlap_secs(),
+        params.sample_rate,
+    );
     let idle_timeout = std::time::Duration::from_secs(30);
 
     let (mut sender, mut receiver) = {
@@ -281,16 +285,39 @@ async fn handle_transcribe_socket(
 
                 let windows = buffer.push(&samples);
                 for (window, chunk_index) in windows {
+                    let text = match run_asr_inference(&state, window).await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            tracing::error!(
+                                model_id = %state.model_id(),
+                                error = %e,
+                                chunk_index,
+                                "ASR inference failed"
+                            );
+                            // Send error message to client without crashing connection.
+                            let error_msg = serde_json::json!({
+                                "error": format!("inference failed: {e}"),
+                                "chunk_index": chunk_index,
+                            });
+                            if let Ok(json) = serde_json::to_string(&error_msg) {
+                                if let Err(e) = sender.send(Message::Text(json.into())).await {
+                                    tracing::warn!(error = %e, "failed to send error message");
+                                    return;
+                                }
+                            }
+                            continue;
+                        }
+                    };
+
                     let transcript = TranscriptMessage {
                         channel: params.channel.clone(),
                         chunk_index,
-                        text: String::new(),
+                        text,
                     };
 
-                    // Log window emission for observability.
                     tracing::debug!(
                         chunk_index,
-                        window_len = window.len(),
+                        text_len = transcript.text.len(),
                         "emitting transcript for audio window"
                     );
 
@@ -312,17 +339,64 @@ async fn handle_transcribe_socket(
     }
 
     // Flush remaining samples on close.
-    if let Some((_remaining, chunk_index)) = buffer.flush() {
-        let transcript = TranscriptMessage {
-            channel: params.channel.clone(),
-            chunk_index,
-            text: String::new(),
-        };
-
-        if let Ok(json) = serde_json::to_string(&transcript) {
-            if let Err(e) = sender.send(Message::Text(json.into())).await {
-                tracing::debug!(error = %e, "failed to send final transcript on close");
+    if let Some((remaining, chunk_index)) = buffer.flush() {
+        match run_asr_inference(&state, remaining).await {
+            Ok(text) => {
+                let transcript = TranscriptMessage {
+                    channel: params.channel.clone(),
+                    chunk_index,
+                    text,
+                };
+                if let Ok(json) = serde_json::to_string(&transcript) {
+                    if let Err(e) = sender.send(Message::Text(json.into())).await {
+                        tracing::debug!(error = %e, "failed to send final transcript on close");
+                    }
+                }
             }
+            Err(e) => {
+                tracing::warn!(
+                    model_id = %state.model_id(),
+                    error = %e,
+                    "ASR inference failed on flush"
+                );
+            }
+        }
+    }
+}
+
+/// Run ASR inference on a window of audio samples.
+///
+/// Acquires a read lock for prepare (feature extraction), then a write
+/// lock for execute (ONNX session). Extracts transcript text from the
+/// pipeline output.
+async fn run_asr_inference(
+    state: &AppState,
+    samples: Vec<f32>,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Read lock for prepare (tokenization/feature extraction).
+    let prepared = {
+        let pipeline = state.read_pipeline().await;
+        pipeline.prepare(InferenceInput::Audio(samples))?
+    };
+
+    // Write lock for execute (ONNX session mutation).
+    let output = {
+        let mut pipeline = state.write_pipeline().await;
+        pipeline.execute(prepared)?
+    };
+
+    match output {
+        PipelineOutput::Asr(text) => Ok(text),
+        other => {
+            tracing::warn!(
+                output_type = ?std::mem::discriminant(&other),
+                "expected ASR output from pipeline, got different variant"
+            );
+            // Convert non-ASR output to text representation as fallback.
+            Ok(other.to_json()["text"]
+                .as_str()
+                .unwrap_or("")
+                .to_string())
         }
     }
 }

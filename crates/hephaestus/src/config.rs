@@ -103,6 +103,26 @@ pub struct Config {
     #[serde(default)]
     pub model_profile: Option<String>,
 
+    /// Feature extractor for ASR preprocessing (env `FEATURE_EXTRACTOR`, D-09).
+    /// `"mel"` computes mel spectrograms for Whisper-style models.
+    /// `"none"` passes raw waveform for CTC models like wav2vec2.
+    #[serde(default = "default_feature_extractor")]
+    pub feature_extractor: String,
+
+    /// Chunking strategy for streaming ASR (env `CHUNKING_STRATEGY`, D-11).
+    /// `"windowed"` uses fixed-size windows with overlap for encoder-decoder models.
+    /// `"streaming"` passes through for native streaming CTC models.
+    #[serde(default = "default_chunking_strategy")]
+    pub chunking_strategy: String,
+
+    /// Window duration in seconds for windowed chunking (env `WINDOW_SIZE_SECS`, D-10).
+    #[serde(default = "default_window_size_secs")]
+    pub window_size_secs: f32,
+
+    /// Overlap duration in seconds between adjacent windows (env `OVERLAP_SECS`, D-10).
+    #[serde(default = "default_overlap_secs")]
+    pub overlap_secs: f32,
+
     /// Enable dynamic request batching (env `BATCH_ENABLED`, D-07, BTCH-02).
     /// When false (default), requests flow through the direct path with zero overhead.
     #[serde(default)]
@@ -153,6 +173,22 @@ fn default_batch_max_wait_ms() -> u64 {
 
 fn default_forge_timeout_secs() -> u64 {
     600
+}
+
+fn default_feature_extractor() -> String {
+    "none".to_string()
+}
+
+fn default_chunking_strategy() -> String {
+    "windowed".to_string()
+}
+
+fn default_window_size_secs() -> f32 {
+    30.0
+}
+
+fn default_overlap_secs() -> f32 {
+    1.0
 }
 
 impl Config {
@@ -243,6 +279,38 @@ impl Config {
             bail!("STORAGE_ROOT is required when STORAGE_TYPE=fs");
         }
 
+        // T-11-10: validate ASR config fields against explicit allowlists.
+        const ALLOWED_FEATURE_EXTRACTORS: &[&str] = &["mel", "none"];
+        if !ALLOWED_FEATURE_EXTRACTORS.contains(&self.feature_extractor.as_str()) {
+            bail!(
+                "invalid FEATURE_EXTRACTOR '{}' -- accepted values: mel, none",
+                self.feature_extractor,
+            );
+        }
+
+        const ALLOWED_CHUNKING_STRATEGIES: &[&str] = &["windowed", "streaming"];
+        if !ALLOWED_CHUNKING_STRATEGIES.contains(&self.chunking_strategy.as_str()) {
+            bail!(
+                "invalid CHUNKING_STRATEGY '{}' -- accepted values: windowed, streaming",
+                self.chunking_strategy,
+            );
+        }
+
+        if self.window_size_secs <= 0.0 || self.window_size_secs > 60.0 {
+            bail!(
+                "WINDOW_SIZE_SECS must be positive and at most 60.0 (got {})",
+                self.window_size_secs,
+            );
+        }
+
+        if self.overlap_secs < 0.0 || self.overlap_secs >= self.window_size_secs {
+            bail!(
+                "OVERLAP_SECS must be non-negative and less than WINDOW_SIZE_SECS ({}) (got {})",
+                self.window_size_secs,
+                self.overlap_secs,
+            );
+        }
+
         if self.batch_enabled {
             if self.batch_max_size < 1 || self.batch_max_size > 64 {
                 bail!(
@@ -289,6 +357,10 @@ mod tests {
             forge_url: None,
             forge_timeout_secs: 600,
             model_profile: None,
+            feature_extractor: "none".to_string(),
+            chunking_strategy: "windowed".to_string(),
+            window_size_secs: 30.0,
+            overlap_secs: 1.0,
             batch_enabled: false,
             batch_max_size: 8,
             batch_max_wait_ms: 50,
@@ -601,5 +673,68 @@ mod tests {
         let result = config.validate();
 
         assert!(result.is_ok(), "fs with storage_root should be accepted");
+    }
+
+    // --- ASR config tests ---
+
+    #[test]
+    fn test_validate_rejects_invalid_feature_extractor() {
+        let mut config = config_with_model_path(None);
+        config.feature_extractor = "fbank".to_string();
+
+        let result = config.validate();
+
+        assert!(result.is_err(), "invalid feature_extractor should be rejected");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("FEATURE_EXTRACTOR"),
+            "error should mention FEATURE_EXTRACTOR: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_accepts_mel_and_none() {
+        for fe in &["mel", "none"] {
+            let mut config = config_with_model_path(None);
+            config.feature_extractor = fe.to_string();
+            let result = config.validate();
+            assert!(result.is_ok(), "feature_extractor={fe} should be accepted");
+        }
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_chunking_strategy() {
+        let mut config = config_with_model_path(None);
+        config.chunking_strategy = "buffered".to_string();
+
+        let result = config.validate();
+
+        assert!(result.is_err(), "invalid chunking_strategy should be rejected");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("CHUNKING_STRATEGY"),
+            "error should mention CHUNKING_STRATEGY: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_rejects_negative_window_size() {
+        let mut config = config_with_model_path(None);
+        config.window_size_secs = -1.0;
+
+        let result = config.validate();
+
+        assert!(result.is_err(), "negative window_size_secs should be rejected");
+    }
+
+    #[test]
+    fn test_validate_rejects_overlap_exceeding_window() {
+        let mut config = config_with_model_path(None);
+        config.window_size_secs = 10.0;
+        config.overlap_secs = 10.0;
+
+        let result = config.validate();
+
+        assert!(result.is_err(), "overlap_secs >= window_size_secs should be rejected");
     }
 }

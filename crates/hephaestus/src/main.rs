@@ -15,8 +15,8 @@ use anyhow::Context;
 use hephaestus_api::{AppState, Batcher, batcher_loop, build_router};
 use hephaestus_api::grpc::GrpcInferenceService;
 use hephaestus_core::{
-    ClassifierPipeline, EmbeddingsPipeline, ExecutionProvider, ModelProfile, PipelineKind,
-    Seq2SeqPipeline, TokenClassifierPipeline, detect_profile,
+    AsrPipeline, ClassifierPipeline, EmbeddingsPipeline, ExecutionProvider, ModelProfile,
+    PipelineKind, Seq2SeqPipeline, TokenClassifierPipeline, detect_profile,
 };
 use hephaestus_resolve::{HttpForgeClient, ModelResolver};
 
@@ -47,6 +47,10 @@ async fn main() -> Result<(), anyhow::Error> {
         forge_url = ?config.forge_url,
         forge_timeout_secs = config.forge_timeout_secs,
         model_profile = ?config.model_profile,
+        feature_extractor = %config.feature_extractor,
+        chunking_strategy = %config.chunking_strategy,
+        window_size_secs = config.window_size_secs,
+        overlap_secs = config.overlap_secs,
         "configuration loaded"
     );
 
@@ -169,6 +173,16 @@ async fn main() -> Result<(), anyhow::Error> {
             tracing::info!("token classifier pipeline constructed");
             PipelineKind::TokenClassifier(pipeline)
         }
+        ModelProfile::Asr => {
+            let pipeline = AsrPipeline::new(&model_dir, &ep, &config.feature_extractor)
+                .context("failed to construct ASR pipeline")?;
+            tracing::info!(
+                feature_extractor = %config.feature_extractor,
+                chunking_strategy = %config.chunking_strategy,
+                "asr pipeline constructed"
+            );
+            PipelineKind::Asr(pipeline)
+        }
     };
 
     // 5. Build shared state with optional batcher (D-07).
@@ -190,6 +204,8 @@ async fn main() -> Result<(), anyhow::Error> {
         Duration::from_secs(config.request_timeout_secs),
         metrics_handle,
         batcher_opt,
+        config.window_size_secs,
+        config.overlap_secs,
     ));
 
     // 5b. Spawn batcher background task if batching is enabled (D-06).
@@ -224,7 +240,14 @@ async fn main() -> Result<(), anyhow::Error> {
     // 6. Run warmup inference pass (CORE-03), then flip readiness.
     //    Warmup is a performance optimization (pre-warms caches), not a
     //    correctness gate. Failure logs a warning but does not crash the pod.
-    {
+    //    ASR models require audio input for warmup, which is not available
+    //    at startup -- skip warmup for ASR profiles.
+    if profile == ModelProfile::Asr {
+        tracing::info!(
+            model_id = %config.model_id,
+            "skipping warmup for ASR profile (no audio warmup implemented)"
+        );
+    } else {
         let warmup_text = config
             .warmup_input
             .as_deref()
