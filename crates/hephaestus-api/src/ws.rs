@@ -136,6 +136,13 @@ impl AudioBuffer {
         let window_samples = (window_secs * sample_rate as f32) as usize;
         let overlap_samples = (overlap_secs * sample_rate as f32) as usize;
 
+        // Guard against zero window (would cause infinite loop in push()).
+        assert!(window_samples > 0, "window_samples must be > 0 (window_secs too small for sample rate)");
+        assert!(
+            window_samples > overlap_samples,
+            "window_samples ({window_samples}) must exceed overlap_samples ({overlap_samples})"
+        );
+
         Self {
             samples: Vec::with_capacity(window_samples),
             window_samples,
