@@ -294,9 +294,9 @@ async fn handle_transcribe_socket(
                                 chunk_index,
                                 "ASR inference failed"
                             );
-                            // Send error message to client without crashing connection.
+                            // Send sanitized error to client (no internal details).
                             let error_msg = serde_json::json!({
-                                "error": format!("inference failed: {e}"),
+                                "error": "inference failed",
                                 "chunk_index": chunk_index,
                             });
                             if let Ok(json) = serde_json::to_string(&error_msg) {
