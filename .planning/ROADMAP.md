@@ -299,9 +299,16 @@ Plans:
   3. Audio preprocessing (resampling to 16kHz, feature extraction) runs in Rust with no Python dependency
   4. Existing REST and gRPC endpoints remain unchanged
 
-**Plans:** 0 plans
+**Requirements:** PRFX-01, APIX-02
+**Plans:** 3 plans
 
 Plans:
+**Wave 1** *(parallel -- no file overlap)*
 
-- [ ] TBD (run /gsd-plan-phase 11 to break down)
+- [ ] 11-01-PLAN.md — Pipeline generalization: InferenceInput/PipelineOutput type system, PipelineKind dispatch update, caller migration
+- [ ] 11-02-PLAN.md — WebSocket serving layer: handler, audio buffer, PCM conversion, route registration
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 11-03-PLAN.md — ASR pipeline: CTC decoder, mel spectrogram, AsrPipeline, profile detection, config, binary wiring, WebSocket integration
 
