@@ -9,8 +9,7 @@ use crate::error::CoreError;
 /// Supported model profile types.
 ///
 /// Each variant maps to a concrete pipeline implementation that handles
-/// profile-specific pre/post-processing. Seq2Seq and TokenClassifier
-/// are defined here but implemented in a later plan.
+/// profile-specific pre/post-processing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelProfile {
     /// Text classification (e.g., sentiment analysis).
@@ -21,6 +20,8 @@ pub enum ModelProfile {
     Seq2Seq,
     /// Token-level classification (e.g., NER, POS tagging).
     TokenClassifier,
+    /// Automatic speech recognition (e.g., wav2vec2, Whisper).
+    Asr,
 }
 
 /// Detect the model profile from config.json fields.
@@ -47,6 +48,16 @@ pub fn detect_profile(
     if let Some(archs) = config.get("architectures").and_then(|v| v.as_array()) {
         for arch in archs {
             if let Some(name) = arch.as_str() {
+                // ASR: CTC models (Wav2Vec2ForCTC, HubertForCTC, etc.).
+                if name.ends_with("ForCTC") {
+                    return Ok(ModelProfile::Asr);
+                }
+                // ASR: Whisper encoder-decoder. Must come BEFORE the
+                // generic ForConditionalGeneration check to avoid
+                // misdetecting Whisper as Seq2Seq.
+                if name == "WhisperForConditionalGeneration" {
+                    return Ok(ModelProfile::Asr);
+                }
                 if name.ends_with("ForSequenceClassification") {
                     return Ok(ModelProfile::Classifier);
                 }
@@ -66,6 +77,7 @@ pub fn detect_profile(
     // Fallback: check pipeline_tag if present.
     if let Some(tag) = config.get("pipeline_tag").and_then(|v| v.as_str()) {
         match tag {
+            "automatic-speech-recognition" => return Ok(ModelProfile::Asr),
             "text-classification" | "sentiment-analysis" => return Ok(ModelProfile::Classifier),
             "token-classification" | "ner" => return Ok(ModelProfile::TokenClassifier),
             "text2text-generation" | "translation" | "summarization" => {
@@ -94,8 +106,9 @@ fn parse_profile_string(s: &str) -> Result<ModelProfile, CoreError> {
         "embeddings" => Ok(ModelProfile::Embeddings),
         "seq2seq" => Ok(ModelProfile::Seq2Seq),
         "token_classifier" | "token-classifier" => Ok(ModelProfile::TokenClassifier),
+        "asr" => Ok(ModelProfile::Asr),
         _ => Err(CoreError::Config(format!(
-            "unrecognized model profile '{s}'; expected one of: classifier, embeddings, seq2seq, token_classifier"
+            "unrecognized model profile '{s}'; expected one of: classifier, embeddings, seq2seq, token_classifier, asr"
         ))),
     }
 }
@@ -294,5 +307,75 @@ mod tests {
 
         // Assert
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_detect_asr_from_ctc_architecture() {
+        // Arrange
+        let config = serde_json::json!({
+            "architectures": ["Wav2Vec2ForCTC"]
+        });
+
+        // Act
+        let profile = detect_profile(&config, None).expect("should detect profile");
+
+        // Assert
+        assert_eq!(profile, ModelProfile::Asr);
+    }
+
+    #[test]
+    fn test_detect_asr_from_hubert_ctc_architecture() {
+        // Arrange
+        let config = serde_json::json!({
+            "architectures": ["HubertForCTC"]
+        });
+
+        // Act
+        let profile = detect_profile(&config, None).expect("should detect profile");
+
+        // Assert
+        assert_eq!(profile, ModelProfile::Asr);
+    }
+
+    #[test]
+    fn test_detect_asr_from_whisper_architecture() {
+        // Arrange
+        let config = serde_json::json!({
+            "architectures": ["WhisperForConditionalGeneration"]
+        });
+
+        // Act
+        let profile = detect_profile(&config, None).expect("should detect profile");
+
+        // Assert -- Whisper must be ASR, not Seq2Seq
+        assert_eq!(profile, ModelProfile::Asr);
+    }
+
+    #[test]
+    fn test_detect_asr_from_pipeline_tag() {
+        // Arrange
+        let config = serde_json::json!({
+            "pipeline_tag": "automatic-speech-recognition"
+        });
+
+        // Act
+        let profile = detect_profile(&config, None).expect("should detect profile");
+
+        // Assert
+        assert_eq!(profile, ModelProfile::Asr);
+    }
+
+    #[test]
+    fn test_override_asr() {
+        // Arrange -- config says classifier, override says asr
+        let config = serde_json::json!({
+            "architectures": ["BertForSequenceClassification"]
+        });
+
+        // Act
+        let profile = detect_profile(&config, Some("asr")).expect("should detect profile");
+
+        // Assert
+        assert_eq!(profile, ModelProfile::Asr);
     }
 }
