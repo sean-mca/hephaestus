@@ -54,6 +54,9 @@ reqwest = { version = "0.13", features = ["json"] }
 # Storage abstraction (Phase 6)
 opendal = { version = "0.58", features = ["services-s3", "services-fs"] }
 
+# Audio feature extraction
+mel_spec = "0.4"
+
 # Dev/test dependencies
 hf-hub = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }

@@ -11,7 +11,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-mel_spec = "0.4"
+mel_spec.workspace = true
 
 [features]
 cuda = ["ort/cuda"]
