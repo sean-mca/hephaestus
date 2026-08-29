@@ -1322,8 +1322,14 @@ impl AsrPipeline {
         let output_ids: Vec<u32> = tokens
             .iter()
             .skip(1) // Skip decoder_start_token_id.
-            .map(|&t| t as u32)
-            .collect();
+            .map(|&t| {
+                u32::try_from(t).map_err(|_| {
+                    CoreError::Inference(format!(
+                        "invalid token ID {t} in Whisper decoder output"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<u32>, CoreError>>()?;
 
         tokenizer
             .decode(&output_ids, true)
