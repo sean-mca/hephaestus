@@ -846,6 +846,10 @@ pub struct AsrPipeline {
 
     /// Name of the decoder input_ids input (varies: "input_ids" or "decoder_input_ids").
     decoder_input_name: String,
+
+    /// Name of the encoder hidden states input to the decoder
+    /// (varies: "encoder_hidden_states", "encoder_output", etc.).
+    encoder_hidden_name: String,
 }
 
 impl AsrPipeline {
@@ -983,6 +987,7 @@ impl AsrPipeline {
             eos_token_id: 0,
             max_target_positions: 0,
             decoder_input_name: String::new(),
+            encoder_hidden_name: String::new(),
         })
     }
 
@@ -1064,6 +1069,24 @@ impl AsrPipeline {
             )));
         };
 
+        // Validate encoder hidden states input name (varies across ONNX exports).
+        let encoder_hidden_name =
+            if decoder_inputs.iter().any(|n| n == "encoder_hidden_states") {
+                "encoder_hidden_states".to_string()
+            } else if decoder_inputs.iter().any(|n| n == "encoder_output") {
+                "encoder_output".to_string()
+            } else if decoder_inputs
+                .iter()
+                .any(|n| n == "encoder_last_hidden_state")
+            {
+                "encoder_last_hidden_state".to_string()
+            } else {
+                return Err(CoreError::ModelValidation(format!(
+                    "Whisper decoder must have 'encoder_hidden_states', 'encoder_output', \
+                     or 'encoder_last_hidden_state' input; got: {decoder_inputs:?}"
+                )));
+            };
+
         // Load tokenizer.
         let tokenizer_path = model_dir.join("tokenizer.json");
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
@@ -1120,6 +1143,7 @@ impl AsrPipeline {
             eos_token_id,
             max_target_positions,
             decoder_input_name,
+            encoder_hidden_name,
         })
     }
 }
@@ -1259,7 +1283,7 @@ impl AsrPipeline {
             let decoder_outputs = decoder_session
                 .run(ort::inputs![
                     self.decoder_input_name.as_str() => token_tensor,
-                    "encoder_hidden_states" => enc_tensor,
+                    self.encoder_hidden_name.as_str() => enc_tensor,
                 ])
                 .map_err(|e| CoreError::Inference(e.to_string()))?;
             check_outputs_nonempty(&decoder_outputs)?;
