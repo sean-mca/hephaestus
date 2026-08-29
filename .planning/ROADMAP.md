@@ -300,13 +300,13 @@ Plans:
   4. Existing REST and gRPC endpoints remain unchanged
 
 **Requirements:** PRFX-01, APIX-02
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
 
 - [x] 11-01-PLAN.md — Pipeline generalization: InferenceInput/PipelineOutput type system, PipelineKind dispatch update, caller migration
-- [ ] 11-02-PLAN.md — WebSocket serving layer: handler, audio buffer, PCM conversion, route registration
+- [x] 11-02-PLAN.md — WebSocket serving layer: handler, audio buffer, PCM conversion, route registration
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

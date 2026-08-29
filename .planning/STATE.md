@@ -6,14 +6,14 @@ current_phase: 11
 current_phase_name: websocket-streaming-asr-pipeline
 status: executing
 stopped_at: Phase 11 context gathered
-last_updated: "2026-08-29T12:11:51.442Z"
+last_updated: "2026-08-29T12:17:37.231Z"
 last_activity: 2026-08-29
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 27
-  completed_plans: 25
+  completed_plans: 26
   percent: 82
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-26)
 ## Current Position
 
 Phase: 11 (websocket-streaming-asr-pipeline) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-29 — Phase 11 execution started
 
@@ -78,6 +78,7 @@ Progress: [████████████████████] 9/9 pla
 | Phase 10 P01 | 2min | 2 tasks | 5 files |
 | Phase 10 P02 | 6min | 2 tasks | 7 files |
 | Phase 11 P01 | 5min | 2 tasks | 7 files |
+| Phase 11 P02 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,9 @@ Recent decisions affecting current work:
 - [Phase ?]: PipelineKind::prepare accepts impl Into<InferenceInput> for backward-compatible String callers
 - [Phase ?]: PipelineOutput::to_json() replaces serde_json::json! macros for typed output
 - [Phase ?]: PreparedAudio fields marked allow(dead_code) until ASR pipeline (Plan 11-03)
+- [Phase ?]: AudioBuffer caps at 2x window_samples for memory exhaustion prevention (T-11-04)
+- [Phase ?]: 30-second idle timeout on WebSocket recv (T-11-05)
+- [Phase ?]: TranscriptMessage.text empty until Plan 11-03 wires ASR
 
 ### Roadmap Evolution
 
@@ -172,6 +176,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-29T12:11:16.667Z
+Last session: 2026-08-29T12:17:29.666Z
 Stopped at: Phase 11 context gathered
 Resume file: .planning/phases/11-websocket-streaming-asr-pipeline/11-CONTEXT.md
