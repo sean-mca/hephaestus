@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry (completed 2026-08-26)
 - [x] **Phase 8: Inference Quality and Concurrency** - NER score normalization, pipeline mutex split for concurrent tokenization, real integration tests (completed 2026-08-27)
 - [x] **Phase 10: gRPC Inference API** - tonic gRPC serving layer multiplexed with HTTP/REST, health checking, reflection, all model profiles (completed 2026-08-28)
-- [ ] **Phase 11: WebSocket Streaming & ASR Pipeline** - WebSocket streaming endpoint for real-time audio inference, ASR model profile with 16kHz resampling and feature extraction
+- [x] **Phase 11: WebSocket Streaming & ASR Pipeline** - WebSocket streaming endpoint for real-time audio inference, ASR model profile with 16kHz resampling and feature extraction (completed 2026-08-29)
 
 ## Phase Details
 
@@ -300,7 +300,7 @@ Plans:
   4. Existing REST and gRPC endpoints remain unchanged
 
 **Requirements:** PRFX-01, APIX-02
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
@@ -310,4 +310,4 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 11-03-PLAN.md — ASR pipeline: CTC decoder, mel spectrogram, AsrPipeline, profile detection, config, binary wiring, WebSocket integration
+- [x] 11-03-PLAN.md — ASR pipeline: CTC decoder, mel spectrogram, AsrPipeline, profile detection, config, binary wiring, WebSocket integration
