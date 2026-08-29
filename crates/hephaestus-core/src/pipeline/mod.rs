@@ -1,6 +1,6 @@
 //! Core inference pipeline trait, classifier, and embeddings implementations.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ndarray::Array2;
 use ort::session::builder::GraphOptimizationLevel;
@@ -238,34 +238,41 @@ fn check_outputs_nonempty(outputs: &ort::session::SessionOutputs<'_>) -> Result<
     Ok(())
 }
 
-/// Load an ONNX session from a model directory.
+/// Resolve an ONNX model file path with `onnx/` subdirectory fallback.
 ///
-/// Resolves the model file with `onnx/` subdirectory fallback, loads
-/// with Level3 optimization, registers the requested execution
-/// providers, loads the tokenizer, and validates inputs.
-fn load_session_and_tokenizer(
-    model_dir: &Path,
-    ep: &ExecutionProvider,
-) -> Result<(Session, Tokenizer), CoreError> {
-    // 1. Resolve model file with onnx/ subdirectory fallback.
-    let onnx_subdir = model_dir.join("onnx/model.onnx");
-    let flat_path = model_dir.join("model.onnx");
-    let model_path = if onnx_subdir.exists() {
-        onnx_subdir
+/// Checks `{model_dir}/onnx/{filename}` first, then `{model_dir}/{filename}`.
+/// Returns the first path that exists on disk.
+///
+/// # Errors
+///
+/// Returns [`CoreError::ModelLoad`] if neither path exists.
+fn resolve_onnx_path(model_dir: &Path, filename: &str) -> Result<PathBuf, CoreError> {
+    let onnx_subdir = model_dir.join("onnx").join(filename);
+    let flat_path = model_dir.join(filename);
+    if onnx_subdir.exists() {
+        Ok(onnx_subdir)
     } else if flat_path.exists() {
-        flat_path
+        Ok(flat_path)
     } else {
-        return Err(CoreError::ModelLoad(format!(
+        Err(CoreError::ModelLoad(format!(
             "ONNX model not found; tried '{}' and '{}'",
             onnx_subdir.display(),
             flat_path.display(),
-        )));
-    };
+        )))
+    }
+}
 
-    // 2. Build execution provider list (may fail if feature not compiled).
+/// Build an ONNX Runtime session from a model file path.
+///
+/// Creates a session with Level3 graph optimization and the requested
+/// execution providers. Shared by all pipeline constructors.
+///
+/// # Errors
+///
+/// Returns [`CoreError::ModelLoad`] if the session cannot be created.
+fn build_onnx_session(path: &Path, ep: &ExecutionProvider) -> Result<Session, CoreError> {
     let providers = ep.to_ort_providers()?;
 
-    // 3. Load ONNX session (ort v2 -- no Environment).
     let mut builder = Session::builder()
         .map_err(|e| CoreError::ModelLoad(e.to_string()))?
         .with_optimization_level(GraphOptimizationLevel::Level3)
@@ -277,16 +284,30 @@ fn load_session_and_tokenizer(
             .map_err(|e| CoreError::ModelLoad(e.to_string()))?;
     }
 
-    let session = builder
-        .commit_from_file(&model_path)
-        .map_err(|e| CoreError::ModelLoad(e.to_string()))?;
+    builder
+        .commit_from_file(path)
+        .map_err(|e| CoreError::ModelLoad(e.to_string()))
+}
 
-    // 3. Load tokenizer.
+/// Load an ONNX session from a model directory.
+///
+/// Resolves the model file with `onnx/` subdirectory fallback, loads
+/// with Level3 optimization, registers the requested execution
+/// providers, loads the tokenizer, and validates inputs.
+fn load_session_and_tokenizer(
+    model_dir: &Path,
+    ep: &ExecutionProvider,
+) -> Result<(Session, Tokenizer), CoreError> {
+    // 1. Resolve model file and build ONNX session.
+    let model_path = resolve_onnx_path(model_dir, "model.onnx")?;
+    let session = build_onnx_session(&model_path, ep)?;
+
+    // 2. Load tokenizer.
     let tokenizer_path = model_dir.join("tokenizer.json");
     let mut tokenizer = Tokenizer::from_file(&tokenizer_path)
         .map_err(|e| CoreError::Tokenization(e.to_string()))?;
 
-    // 4. Configure truncation to mitigate T-01-02 DoS threat.
+    // 3. Configure truncation to mitigate T-01-02 DoS threat.
     tokenizer
         .with_truncation(Some(tokenizers::TruncationParams {
             max_length: 512,
@@ -294,7 +315,7 @@ fn load_session_and_tokenizer(
         }))
         .map_err(|e| CoreError::Tokenization(e.to_string()))?;
 
-    // 5. Validate tokenizer-model compatibility (TOKN-03).
+    // 4. Validate tokenizer-model compatibility (TOKN-03).
     let model_input_names: Vec<String> = session
         .inputs()
         .iter()
