@@ -81,6 +81,15 @@ pub(crate) async fn download_from_hf(
             ResolveError::HuggingFace(format!("failed to download config.json: {e}"))
         })?;
 
+    // Optional: vocab.json (required by CTC ASR models like wav2vec2).
+    match repo.download_file().filename("vocab.json").send().await {
+        Ok(_) => {}
+        Err(HFError::EntryNotFound { .. }) => {}
+        Err(e) => {
+            tracing::warn!(model_id, error = %e, "failed to download optional vocab.json");
+        }
+    }
+
     // Navigate to snapshot root from the ONNX file path.
     // onnx_path is {snapshot_root}/onnx/model.onnx or {snapshot_root}/model.onnx
     let snapshot_root =
