@@ -228,7 +228,7 @@ pub async fn ws_transcribe(
 /// Enforces a 30-second idle timeout to prevent connection slot
 /// exhaustion from idle clients (T-11-05).
 async fn handle_transcribe_socket(
-    mut socket: WebSocket,
+    socket: WebSocket,
     params: TranscribeParams,
     _state: Arc<AppState>,
 ) {
