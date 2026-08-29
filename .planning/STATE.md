@@ -150,6 +150,8 @@ Recent decisions affecting current work:
 - Phase 8 added: Inference Quality and Concurrency (NER score bug, mutex split, integration tests)
 - Phase 9 added: GPU Acceleration & TensorRT Engine Pipeline (CUDA/TRT EPs, engine compilation CLI, lean runtime images, S3 engine caching)
 - Phase 10 added: gRPC Inference API (tonic gRPC layer multiplexed with HTTP/REST, health checking, reflection, all model profiles)
+- Phase 11 added: WebSocket Streaming & ASR Pipeline (WebSocket endpoint, CTC/Whisper ASR, mel spectrogram, audio buffering)
+- Phase 12 added: Hot-Path Performance Optimization (eliminate Vec clones in tensor construction, Arc<str> metrics, dead field removal)
 
 ### Pending Todos
 
