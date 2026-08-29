@@ -315,7 +315,7 @@ Plans:
 ### Phase 12: Hot-Path Performance Optimization
 
 **Goal:** Eliminate unnecessary heap allocations and data copying on inference hot paths identified by rules/ audit: remove per-request Vec clones in ONNX tensor construction (pipeline.rs), remove dead raw_samples field and its 1.9MB audio buffer clone (pipeline.rs), and replace String cloning with Arc<str> in metrics recording (metrics.rs)
-**Requirements**: TBD
+**Requirements**: XCUT-03
 **Depends on:** Phase 11
 **Success Criteria** (what must be TRUE):
 - ONNX tensor construction in `run_onnx_inference` borrows PreparedInput vecs via ArrayView instead of cloning them
@@ -326,6 +326,10 @@ Plans:
 - All existing tests pass (`cargo test --workspace`)
 - No public API surface changes
 
-Plans:
+**Plans:** 2 plans
 
-- [ ] TBD (run /gsd-plan-phase 12 to break down)
+Plans:
+**Wave 1** *(parallel -- no file overlap)*
+
+- [ ] 12-01-PLAN.md — Zero-copy tensor construction in pipeline.rs (ArrayView, dead field removal, CTC/Whisper optimizations)
+- [ ] 12-02-PLAN.md — Arc<str> metrics optimization in StageTimer with caller migration
