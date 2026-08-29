@@ -327,10 +327,10 @@ Plans:
 - All existing tests pass (`cargo test --workspace`)
 - No public API surface changes
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
 
 - [x] 12-01-PLAN.md — Zero-copy tensor construction in pipeline.rs (ArrayView, dead field removal, CTC/Whisper optimizations)
-- [ ] 12-02-PLAN.md — Arc<str> metrics optimization in StageTimer with caller migration
+- [x] 12-02-PLAN.md — Arc<str> metrics optimization in StageTimer with caller migration
