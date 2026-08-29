@@ -13,6 +13,7 @@ pub mod metrics;
 pub mod routes;
 pub mod state;
 pub mod telemetry;
+pub mod ws;
 
 pub use batcher::{Batcher, batcher_loop};
 pub use metrics::{StageTimer, install_recorder};
