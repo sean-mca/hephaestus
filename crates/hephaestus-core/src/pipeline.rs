@@ -1293,11 +1293,25 @@ impl AsrPipeline {
                 .try_extract_tensor::<f32>()
                 .map_err(|e| CoreError::Inference(e.to_string()))?;
             let (logit_shape, logit_data) = logits;
-            let vocab_size = logit_shape[logit_shape.len() - 1] as usize;
+
+            if logit_shape.len() != 3 {
+                return Err(CoreError::Inference(format!(
+                    "expected 3D decoder output (batch, seq, vocab), got {}-D",
+                    logit_shape.len()
+                )));
+            }
+            let vocab_size = logit_shape[2] as usize;
 
             // Take logits for the last position.
             let last_pos_start = (seq_len - 1) * vocab_size;
-            let last_pos_logits = &logit_data[last_pos_start..last_pos_start + vocab_size];
+            let expected_len = last_pos_start + vocab_size;
+            if logit_data.len() < expected_len {
+                return Err(CoreError::Inference(format!(
+                    "decoder logit data too short: expected at least {expected_len} elements, got {}",
+                    logit_data.len()
+                )));
+            }
+            let last_pos_logits = &logit_data[last_pos_start..expected_len];
 
             // Argmax.
             let next_token = last_pos_logits
