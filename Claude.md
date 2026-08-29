@@ -11,6 +11,7 @@ A unified ONNX model inference runtime in Rust. Single container that loads, ser
 
 - **Language**: Rust only, 2024 edition & workspace resolver 3
 - **Rules compliance**: Every file must adhere to all rules in `rules/`.
+- **No AI attribution**: Never include Co-Authored-By lines, AI-generated mentions, or any reference to Claude/AI in commits, tags, release notes, code comments, or any other artifact in this repo.
 - **Code Convention**: Traits must follow John Ousterhout's "deep module" principle — expose a minimal interface (1-3 methods) that hides significant implementation complexity. Callers should never need to understand internals. Prefer one `process()` over separate `tokenize()`, `infer()`, `decode()`. Prefer one `resolve()` over separate `check_s3()`, `check_hf()`, `call_forge()`. If a trait has more than 3 required methods, it is probably too shallow — reconsider the abstraction boundary.
 
 <!-- GSD:project-end -->
