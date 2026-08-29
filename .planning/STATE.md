@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 11
-current_phase_name: websocket-streaming-asr-pipeline
+current_phase: 12
+current_phase_name: hot-path-performance-optimization
 status: executing
 stopped_at: Phase 11 context gathered
-last_updated: "2026-08-29T14:03:05.262Z"
+last_updated: "2026-08-29T14:31:58.702Z"
 last_activity: 2026-08-29
-last_activity_desc: Phase 11 execution started
+last_activity_desc: Phase 12 execution started
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 10
-  total_plans: 27
-  completed_plans: 27
-  percent: 91
+  total_plans: 29
+  completed_plans: 28
+  percent: 83
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-26)
 
 **Core value:** A single Rust binary that takes a model name, resolves it to ONNX files, and serves inference with full pre/post-processing -- replacing every per-model Python runtime in the cluster.
-**Current focus:** Phase 11 — websocket-streaming-asr-pipeline
+**Current focus:** Phase 12 — hot-path-performance-optimization
 
 ## Current Position
 
-Phase: 11 (websocket-streaming-asr-pipeline) — EXECUTING
-Plan: 3 of 3
+Phase: 12 (hot-path-performance-optimization) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-29 — Phase 11 execution started
+Last activity: 2026-08-29 — Phase 12 execution started
 
 Progress: [████████████████████] 9/9 plans (100%)
 
@@ -79,6 +79,7 @@ Progress: [████████████████████] 9/9 pla
 | Phase 10 P02 | 6min | 2 tasks | 7 files |
 | Phase 11 P01 | 5min | 2 tasks | 7 files |
 | Phase 11 P02 | 3min | 2 tasks | 5 files |
+| Phase 12 P01 | 2min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,7 @@ Recent decisions affecting current work:
 - [Phase ?]: AudioBuffer caps at 2x window_samples for memory exhaustion prevention (T-11-04)
 - [Phase ?]: 30-second idle timeout on WebSocket recv (T-11-05)
 - [Phase ?]: TranscriptMessage.text empty until Plan 11-03 wires ASR
+- [Phase ?]: [Phase 12]: Separate session lifetime from prepared input lifetime for zero-copy tensor access
 
 ### Roadmap Evolution
 
@@ -178,6 +180,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-29T12:31:58.874Z
+Last session: 2026-08-29T14:31:42.862Z
 Stopped at: Phase 11 context gathered
 Resume file: .planning/phases/11-websocket-streaming-asr-pipeline/11-CONTEXT.md

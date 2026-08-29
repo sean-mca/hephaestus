@@ -318,6 +318,7 @@ Plans:
 **Requirements**: XCUT-03
 **Depends on:** Phase 11
 **Success Criteria** (what must be TRUE):
+
 - ONNX tensor construction in `run_onnx_inference` borrows PreparedInput vecs via ArrayView instead of cloning them
 - EmbeddingsPipeline::execute no longer pre-clones attention_mask
 - ASR CTC prepare path consumes audio Vec directly without cloning (~1.9MB saved per window)
@@ -326,10 +327,10 @@ Plans:
 - All existing tests pass (`cargo test --workspace`)
 - No public API surface changes
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
 
-- [ ] 12-01-PLAN.md — Zero-copy tensor construction in pipeline.rs (ArrayView, dead field removal, CTC/Whisper optimizations)
+- [x] 12-01-PLAN.md — Zero-copy tensor construction in pipeline.rs (ArrayView, dead field removal, CTC/Whisper optimizations)
 - [ ] 12-02-PLAN.md — Arc<str> metrics optimization in StageTimer with caller migration
