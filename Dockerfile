@@ -3,7 +3,7 @@ FROM ubuntu:24.04 AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       curl ca-certificates build-essential pkg-config libssl-dev \
+       curl ca-certificates build-essential pkg-config libssl-dev protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -21,6 +21,8 @@ COPY crates/hephaestus/Cargo.toml crates/hephaestus/Cargo.toml
 COPY crates/hephaestus-api/Cargo.toml crates/hephaestus-api/Cargo.toml
 COPY crates/hephaestus-core/Cargo.toml crates/hephaestus-core/Cargo.toml
 COPY crates/hephaestus-proto/Cargo.toml crates/hephaestus-proto/Cargo.toml
+COPY crates/hephaestus-proto/build.rs crates/hephaestus-proto/build.rs
+COPY crates/hephaestus-proto/proto/ crates/hephaestus-proto/proto/
 COPY crates/hephaestus-resolve/Cargo.toml crates/hephaestus-resolve/Cargo.toml
 RUN mkdir -p crates/hephaestus/src crates/hephaestus-api/src crates/hephaestus-core/src \
              crates/hephaestus-proto/src crates/hephaestus-resolve/src \
