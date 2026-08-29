@@ -205,6 +205,11 @@ pub async fn ws_transcribe(
     Query(params): Query<TranscribeParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Gate on readiness (consistent with HTTP and gRPC handlers).
+    if !state.is_ready() {
+        return Err(ApiError::NotReady);
+    }
+
     // Validate sample rate (D-08).
     if params.sample_rate != 16000 {
         return Err(ApiError::BadRequest(format!(
