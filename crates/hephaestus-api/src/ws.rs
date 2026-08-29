@@ -96,7 +96,10 @@ pub fn i16_bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
 pub fn f32_bytes_to_samples(bytes: &[u8]) -> Vec<f32> {
     bytes
         .chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .map(|chunk| {
+            let sample = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            if sample.is_finite() { sample } else { 0.0 }
+        })
         .collect()
 }
 
