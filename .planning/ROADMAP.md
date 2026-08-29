@@ -290,25 +290,24 @@ Plans:
 
 ### Phase 11: WebSocket Streaming & ASR Pipeline
 
-**Goal:** Add a WebSocket streaming endpoint for real-time audio inference and an ASR model profile with 16kHz resampling and feature extraction, enabling real-time transcription of audio streams
+**Goal:** Add a WebSocket streaming endpoint for real-time audio inference and an ASR model profile with 16kHz validation and feature extraction, enabling real-time transcription of audio streams
 **Depends on:** Phase 10
 **Success Criteria** (what must be TRUE):
 
   1. WebSocket endpoint accepts audio frames and streams transcript fragments back in real-time
   2. ASR models (e.g., Whisper ONNX) load and run inference via the existing PipelineKind dispatch
-  3. Audio preprocessing (resampling to 16kHz, feature extraction) runs in Rust with no Python dependency
+  3. Audio preprocessing (16kHz validation, feature extraction) runs in Rust with no Python dependency
   4. Existing REST and gRPC endpoints remain unchanged
 
 **Requirements:** PRFX-01, APIX-02
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 **Wave 1** *(parallel -- no file overlap)*
 
-- [ ] 11-01-PLAN.md — Pipeline generalization: InferenceInput/PipelineOutput type system, PipelineKind dispatch update, caller migration
+- [x] 11-01-PLAN.md — Pipeline generalization: InferenceInput/PipelineOutput type system, PipelineKind dispatch update, caller migration
 - [ ] 11-02-PLAN.md — WebSocket serving layer: handler, audio buffer, PCM conversion, route registration
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [ ] 11-03-PLAN.md — ASR pipeline: CTC decoder, mel spectrogram, AsrPipeline, profile detection, config, binary wiring, WebSocket integration
-
