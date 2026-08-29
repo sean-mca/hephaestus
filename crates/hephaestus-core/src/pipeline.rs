@@ -361,25 +361,25 @@ fn session_expects_token_type_ids(session: &Session) -> bool {
 /// Conditionally includes a `token_type_ids` zeros tensor when the
 /// session expects it (BERT-family models). DistilBERT models that
 /// omit `token_type_ids` from their inputs are handled without it.
-fn run_onnx_inference<'a>(
-    session: &'a mut Session,
-    prepared: &'a PreparedInput,
-) -> Result<ort::session::SessionOutputs<'a>, CoreError> {
+fn run_onnx_inference<'s>(
+    session: &'s mut Session,
+    prepared: &PreparedInput,
+) -> Result<ort::session::SessionOutputs<'s>, CoreError> {
     let seq_len = prepared.sequence_length;
     let needs_token_type_ids = session_expects_token_type_ids(session);
 
-    let input_ids_array =
-        Array2::from_shape_vec((1, seq_len), prepared.input_ids.clone())
+    let input_ids_view =
+        ndarray::ArrayView2::from_shape((1, seq_len), &prepared.input_ids)
             .map_err(|e| CoreError::Inference(e.to_string()))?;
-    let attention_mask_array =
-        Array2::from_shape_vec((1, seq_len), prepared.attention_mask.clone())
+    let attention_mask_view =
+        ndarray::ArrayView2::from_shape((1, seq_len), &prepared.attention_mask)
             .map_err(|e| CoreError::Inference(e.to_string()))?;
     let token_type_ids_array = Array2::<i64>::zeros((1, seq_len));
 
-    let input_ids_tensor = TensorRef::from_array_view(input_ids_array.view())
+    let input_ids_tensor = TensorRef::from_array_view(input_ids_view)
         .map_err(|e| CoreError::Inference(e.to_string()))?;
     let attention_mask_tensor =
-        TensorRef::from_array_view(attention_mask_array.view())
+        TensorRef::from_array_view(attention_mask_view)
             .map_err(|e| CoreError::Inference(e.to_string()))?;
 
     if needs_token_type_ids {
@@ -534,7 +534,6 @@ impl Pipeline for EmbeddingsPipeline {
     }
 
     fn execute(&mut self, prepared: PreparedInput) -> Result<Vec<f32>, CoreError> {
-        let attention_mask = prepared.attention_mask.clone();
         let outputs = run_onnx_inference(&mut self.session, &prepared)?;
 
         // WR-05: Guard against models with zero output tensors.
@@ -557,7 +556,7 @@ impl Pipeline for EmbeddingsPipeline {
         };
 
         // Mean pool over token dimension using attention mask.
-        let mut pooled = postprocess::mean_pool(data, &attention_mask, hidden_dim)?;
+        let mut pooled = postprocess::mean_pool(data, &prepared.attention_mask, hidden_dim)?;
 
         // L2 normalize to unit vector.
         postprocess::l2_normalize(&mut pooled);
