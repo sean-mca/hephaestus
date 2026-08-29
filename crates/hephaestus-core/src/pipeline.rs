@@ -64,15 +64,11 @@ impl From<String> for InferenceInput {
 
 /// Prepared audio features ready for ONNX inference.
 ///
-/// Holds mel spectrogram (or reshaped raw waveform) and optionally
-/// the original samples for CTC models that need waveform length.
+/// Holds mel spectrogram (or reshaped raw waveform) as a single
+/// tensor ready for the ONNX session.
 pub struct PreparedAudio {
     /// Mel spectrogram or reshaped waveform tensor (time_steps x features).
     pub(crate) features: Array2<f32>,
-    /// Original raw samples, preserved for CTC models that need waveform length.
-    /// Retained for future CTC length-dependent processing.
-    #[allow(dead_code)]
-    pub(crate) raw_samples: Option<Vec<f32>>,
 }
 
 impl PreparedAudio {
@@ -80,8 +76,8 @@ impl PreparedAudio {
     ///
     /// Mirrors `PreparedInput::new_for_test` -- bypasses the `pub(crate)`
     /// restriction so downstream crates can create test instances.
-    pub fn new_for_test(features: Array2<f32>, raw_samples: Option<Vec<f32>>) -> Self {
-        Self { features, raw_samples }
+    pub fn new_for_test(features: Array2<f32>) -> Self {
+        Self { features }
     }
 }
 
@@ -1168,16 +1164,14 @@ impl Pipeline for AsrPipeline {
             )?;
             Ok(PreparedAudio {
                 features: mel_features,
-                raw_samples: None,
             })
         } else {
             // Raw waveform: shape [1, num_samples] for CTC models.
             let num_samples = input.len();
-            let features = Array2::from_shape_vec((1, num_samples), input.clone())
+            let features = Array2::from_shape_vec((1, num_samples), input)
                 .map_err(|e| CoreError::Inference(format!("waveform reshape failed: {e}")))?;
             Ok(PreparedAudio {
                 features,
-                raw_samples: Some(input),
             })
         }
     }
@@ -1275,11 +1269,11 @@ impl AsrPipeline {
 
         for _ in 0..self.max_target_positions {
             let seq_len = tokens.len();
-            let token_array =
-                Array2::from_shape_vec((1, seq_len), tokens.clone())
+            let token_view =
+                ndarray::ArrayView2::from_shape((1, seq_len), &tokens)
                     .map_err(|e| CoreError::Inference(format!("token tensor failed: {e}")))?;
 
-            let token_tensor = TensorRef::from_array_view(token_array.view())
+            let token_tensor = TensorRef::from_array_view(token_view)
                 .map_err(|e| CoreError::Inference(e.to_string()))?;
             let enc_tensor = TensorRef::from_array_view(enc_3d.view())
                 .map_err(|e| CoreError::Inference(e.to_string()))?;
@@ -2111,7 +2105,7 @@ mod tests {
     #[test]
     fn prepared_data_into_text_returns_none_for_audio() {
         let features = Array2::<f32>::zeros((10, 80));
-        let audio = PreparedAudio::new_for_test(features, None);
+        let audio = PreparedAudio::new_for_test(features);
         let data = PreparedData::Audio(audio);
         assert!(data.into_text().is_none());
     }
