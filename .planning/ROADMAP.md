@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Production Hardening** - token_type_ids support, request body limits, resilient warmup/shutdown, smart retry (completed 2026-08-26)
 - [x] **Phase 8: Inference Quality and Concurrency** - NER score normalization, pipeline mutex split for concurrent tokenization, real integration tests (completed 2026-08-27)
 - [x] **Phase 10: gRPC Inference API** - tonic gRPC serving layer multiplexed with HTTP/REST, health checking, reflection, all model profiles (completed 2026-08-28)
-- [ ] **Phase 11: ASR Pipeline & WebSocket Streaming** - ASR model profile with audio preprocessing, WebSocket streaming endpoint for real-time transcription, stereo channel support for call-center audio
+- [ ] **Phase 11: WebSocket Streaming & ASR Pipeline** - WebSocket streaming endpoint for real-time audio inference, ASR model profile with 16kHz resampling and feature extraction
 
 ## Phase Details
 
@@ -288,20 +288,20 @@ Plans:
 
 - [x] 10-02-PLAN.md — gRPC InferenceService impl, ApiError-to-Status mapping, route multiplexing, health reporter, reflection
 
-### Phase 11: ASR Pipeline & WebSocket Streaming
+### Phase 11: WebSocket Streaming & ASR Pipeline
 
-**Goal:** Add an ASR model profile with audio preprocessing (resampling, mel spectrograms), a WebSocket streaming endpoint for real-time transcription, and stereo channel support for call-center audio (left/right speaker separation)
+**Goal:** Add a WebSocket streaming endpoint for real-time audio inference and an ASR model profile with 16kHz resampling and feature extraction, enabling real-time transcription of audio streams
 **Depends on:** Phase 10
 **Success Criteria** (what must be TRUE):
 
-  1. ASR models (e.g., Whisper ONNX) load and run inference via the existing PipelineKind dispatch
-  2. Audio preprocessing (resampling to 16kHz, mel spectrogram extraction) runs in Rust with no Python dependency
-  3. WebSocket endpoint accepts audio frames and streams transcript fragments in real-time
-  4. Mono and stereo (left/right channel) audio are both supported, with speaker tagging for stereo
-  5. Existing REST and gRPC endpoints remain unchanged
+  1. WebSocket endpoint accepts audio frames and streams transcript fragments back in real-time
+  2. ASR models (e.g., Whisper ONNX) load and run inference via the existing PipelineKind dispatch
+  3. Audio preprocessing (resampling to 16kHz, feature extraction) runs in Rust with no Python dependency
+  4. Existing REST and gRPC endpoints remain unchanged
 
 **Plans:** 0 plans
 
 Plans:
 
 - [ ] TBD (run /gsd-plan-phase 11 to break down)
+
